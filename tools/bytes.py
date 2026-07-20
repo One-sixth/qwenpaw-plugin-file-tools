@@ -43,13 +43,16 @@ def file_tools_read_bytes(
     length: int = 512,
     group_size: int = 16,
 ) -> str:
-    """读取二进制文件的指定字节范围，返回 hex 字符串（全大写）。
+    """读取二进制文件的指定字节范围，返回大写 hex 字符串。
+
+    支持从指定偏移量开始读取，可自定义每行显示字节数。
+    一次最多读取 4096 字节，大文件请分多次读取。
 
     Args:
-        path: 文件路径
-        offset: 起始偏移量（字节），0=从开头
-        length: 读取长度（字节），默认 512，上限 4096
-        group_size: -1=不分组，0=报错，>0=每行显示多少字节，默认 16
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        offset: 起始偏移量（字节），默认 0 表示从文件开头读取。不能为负数。
+        length: 读取长度（字节），默认 512，上限 4096。超过 4096 会报错提示分多次读取。
+        group_size: -1=不分组（hex 连在一起），0=报错，>0=每行显示多少字节，默认 16。
     """
     resolved = resolve_path(path)
 
@@ -109,16 +112,18 @@ def file_tools_write_bytes(
     offset: int = -1,
     skip_backup: bool = False,
 ) -> str:
-    """写入二进制文件内容。
+    """写入二进制文件内容，支持全量覆盖和部分覆盖。
 
-    全量覆盖（offset=-1）：类似 file_tools_write 但二进制，自动备份。
-    部分覆盖（offset>=0）：从指定偏移量开始覆写，不改变文件大小。
+    全量覆盖（offset=-1）：类似 file_tools_write 但用于二进制文件。
+        文件已存在时自动备份（除非 skip_backup=True），使用原子写入避免损坏。
+    部分覆盖（offset>=0）：从指定偏移量开始覆写，不改变文件大小，不触发备份。
 
     Args:
-        path: 文件路径
-        content: 写入内容（hex 字符串）
-        offset: -1=全量覆盖，>=0=从该偏移量开始写入
-        skip_backup: 是否跳过备份（仅全量覆盖时有效）
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        content: 要写入的字节数据（hex 字符串）。允许空格，大小写不敏感，
+            不可以 0x 或 \\x 开头，去掉空格后长度必须是 2 的倍数。
+        offset: -1=全量覆盖（默认），>=0=从该偏移量开始写入（部分覆盖）。
+        skip_backup: 是否跳过备份（仅全量覆盖时有效），默认 false。
     """
     resolved = resolve_path(path)
 
@@ -222,13 +227,17 @@ def file_tools_find_bytes(
     offset: int = 0,
     count: int = -1,
 ) -> str:
-    """在二进制文件中精确查找字节序列，返回匹配的偏移量列表（CSV，十进制）。
+    """在二进制文件中精确查找字节序列，返回匹配的偏移量列表（CSV 格式，十进制）。
+
+    查找结果返回 CSV 格式，包含 offset 列，每行一个十进制偏移量。
+    精确匹配（不支持通配符），未匹配时返回提示信息。
 
     Args:
-        path: 文件路径
-        pattern: 要查找的字节序列（hex 字符串）
-        offset: 搜索起始偏移量
-        count: 最多返回几个匹配，-1=全部
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        pattern: 要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，
+            不可以 0x 或 \\x 开头，去掉空格后长度必须是 2 的倍数。
+        offset: 搜索起始偏移量，默认 0 表示从文件开头搜索。
+        count: 最多返回几个匹配，-1=全部返回（默认），>0=限制匹配数量。
     """
     resolved = resolve_path(path)
 
@@ -305,17 +314,19 @@ def file_tools_replace_bytes(
     offset: int = 0,
     skip_backup: bool = False,
 ) -> str:
-    """在二进制文件中查找并替换字节序列。
+    """在二进制文件中查找并替换字节序列，支持变长替换。
 
     old_bytes 和 new_bytes 长度可以不同（替换后文件大小会变）。
+    从后往前替换，避免偏移量变化导致替换错误。
+    修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。
 
     Args:
-        path: 文件路径
-        old_bytes: 要查找的字节序列（hex 字符串）
-        new_bytes: 替换成的字节序列（hex 字符串）
-        count: 替换次数，-1=全部替换
-        offset: 搜索起始偏移量
-        skip_backup: 是否跳过备份
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        old_bytes: 要查找的字节序列（hex 字符串）。
+        new_bytes: 替换成的字节序列（hex 字符串）。
+        count: 替换次数，-1=全部替换（默认），>0=限制替换次数。
+        offset: 搜索起始偏移量，默认 0 表示从文件开头搜索。
+        skip_backup: 是否跳过备份，默认 false。大文件可设为 true 提高速度。
     """
     resolved = resolve_path(path)
 

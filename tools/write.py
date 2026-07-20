@@ -33,17 +33,18 @@ def file_tools_write(
     encoding: str = "utf-8",
     line_separator: str = "auto",
 ) -> str:
-    """写入文件内容。如果文件已存在，自动备份后覆盖写入。
-    如果文件不存在，直接创建新文件。
+    """写入文件内容，替代默认的 write_file。
 
-    使用原子写入（先写临时文件再 os.replace 替换），
-    避免写入中断导致文件损坏。
+    如果文件已存在，自动备份当前文件后再覆盖写入；如果文件不存在，直接创建新文件。
+    使用原子写入（先写临时文件再 os.replace 替换），避免写入中断导致文件损坏。
+    备份后的文件可通过 file_tools_undo 恢复。
 
     Args:
-        path: 文件路径
-        content: 写入内容，\\r\\n/\\r 自动统一为 \\n
-        encoding: 编码，默认 utf-8
-        line_separator: 行结束符，auto=按平台自动处理，\\n=Unix风格，\\r\\n=Windows风格
+        path: 要写入的文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        content: 要写入的文本内容。\\r\\n/\\r 自动统一为 \\n。
+        encoding: 文件编码，默认 utf-8。支持 utf-8、gbk 等 Python 支持的编码。
+        line_separator: 行结束符，默认 auto。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），
+            \\n=Unix 风格，\\r\\n=Windows 风格。
     """
     resolved = resolve_path(path)
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """File Tools 插件入口。
 
-注册 20 个文件操作工具到 QwenPaw Agent 工具箱。
+注册 25 个文件操作工具到 QwenPaw Agent 工具箱。
 """
 
 import logging
@@ -36,6 +36,13 @@ from .tools.safe import (
     file_tools_mkdir,
 )
 from .tools.history import file_tools_undo
+from .tools.write import file_tools_write
+from .tools.bytes import (
+    file_tools_read_bytes,
+    file_tools_write_bytes,
+    file_tools_find_bytes,
+    file_tools_replace_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +51,7 @@ class FileToolsPlugin:
     """File Tools 插件主类。"""
 
     def register(self, api: PluginApi):
-        logger.info("注册 File Tools 插件（20 个工具）...")
+        logger.info("注册 File Tools 插件（25 个工具）...")
 
         # ── 信息读取类 ──
         api.register_tool(
@@ -368,7 +375,104 @@ class FileToolsPlugin:
             enabled=True,
         )
 
-        logger.info("✓ File Tools 插件注册完成（20 个工具）")
+        # ── 全量写入（替代 write_file） ──
+        api.register_tool(
+            tool_name="file_tools_write",
+            tool_func=file_tools_write,
+            description=(
+                "写入文件内容。如果文件已存在，自动备份后覆盖写入；如果文件不存在，直接创建新文件。"
+                "使用原子写入（先写临时文件再 os.replace 替换），避免写入中断导致文件损坏。\n\n"
+                "参数：\n"
+                " path(str) 文件路径\n"
+                " content(str) 写入内容，\\r\\n/\\r 自动统一为 \\n\n"
+                " encoding(str) 编码，默认 utf-8\n"
+                " line_separator(str) 行结束符，auto=按平台自动处理，\\n=Unix风格，\\r\\n=Windows风格\n\n"
+                "示例：write(\"config.py\", content=\"print('hello')\")\n"
+                "  → 创建新文件（不存在时）或覆盖已有文件（已存在时自动备份）\n\n"
+                "注意：新文件不触发备份。覆盖已有文件时自动备份，可用 file_tools_undo 恢复。"
+            ),
+            icon="✏️",
+            enabled=True,
+        )
+
+        logger.info("✓ File Tools 插件注册完成（25 个工具）")
+
+        # ── 字节级工具 ──
+        api.register_tool(
+            tool_name="file_tools_read_bytes",
+            tool_func=file_tools_read_bytes,
+            description=(
+                "读取二进制文件的指定字节范围，返回 hex 字符串（全大写）。\n\n"
+                "参数：\n"
+                " path(str) 文件路径\n"
+                " offset(int) 起始偏移量（字节），默认 0\n"
+                " length(int) 读取长度（字节），默认 512，上限 4096\n"
+                " group_size(int) -1=不分组，0=报错，>0=每行显示多少字节，默认 16\n\n"
+                "示例：read_bytes(\"image.bin\", offset=0, length=16)\n"
+                "  → 读取文件头 16 字节\n\n"
+                "注意：一次最多读取 4096 字节，大文件请分多次读取。"
+            ),
+            icon="🔢",
+            enabled=True,
+        )
+        api.register_tool(
+            tool_name="file_tools_write_bytes",
+            tool_func=file_tools_write_bytes,
+            description=(
+                "写入二进制文件内容。支持全量覆盖和部分覆盖。\n"
+                "全量覆盖时自动备份，部分覆盖时不改变文件大小。\n\n"
+                "参数：\n"
+                " path(str) 文件路径\n"
+                " content(str) 写入内容（hex 字符串），允许空格，不可以 0x/\\x 开头\n"
+                " offset(int) -1=全量覆盖，>=0=从该偏移量开始写入，默认 -1\n"
+                " skip_backup(bool) 是否跳过备份（仅全量覆盖时有效），默认 false\n\n"
+                "示例：\n"
+                "  write_bytes(\"out.bin\", content=\"FF D8 FF E0\")\n"
+                "    → 全量覆盖写入 4 字节\n"
+                "  write_bytes(\"out.bin\", offset=256, content=\"00 00\")\n"
+                "    → 从偏移量 256 处写入 2 字节\n\n"
+                "注意：hex 字符串去掉空格后长度必须是 2 的倍数。"
+            ),
+            icon="✏️",
+            enabled=True,
+        )
+        api.register_tool(
+            tool_name="file_tools_find_bytes",
+            tool_func=file_tools_find_bytes,
+            description=(
+                "在二进制文件中精确查找字节序列，返回匹配的偏移量列表（CSV，十进制）。\n\n"
+                "参数：\n"
+                " path(str) 文件路径\n"
+                " pattern(str) 要查找的字节序列（hex 字符串）\n"
+                " offset(int) 搜索起始偏移量，默认 0\n"
+                " count(int) 最多返回几个匹配，-1=全部，默认 -1\n\n"
+                "示例：find_bytes(\"data.bin\", pattern=\"FF D8\")\n"
+                "  → 查找所有 FF D8 出现的位置\n\n"
+                "注意：精确匹配，不支持通配符。"
+            ),
+            icon="🔎",
+            enabled=True,
+        )
+        api.register_tool(
+            tool_name="file_tools_replace_bytes",
+            tool_func=file_tools_replace_bytes,
+            description=(
+                "在二进制文件中查找并替换字节序列。\n"
+                "old_bytes 和 new_bytes 长度可以不同（替换后文件大小会变）。\n\n"
+                "参数：\n"
+                " path(str) 文件路径\n"
+                " old_bytes(str) 要查找的字节序列（hex 字符串）\n"
+                " new_bytes(str) 替换成的字节序列（hex 字符串）\n"
+                " count(int) 替换次数，-1=全部替换，默认 -1\n"
+                " offset(int) 搜索起始偏移量，默认 0\n"
+                " skip_backup(bool) 是否跳过备份，默认 false\n\n"
+                "示例：replace_bytes(\"data.bin\", old_bytes=\"FF D8\", new_bytes=\"00 00\")\n"
+                "  → 把所有 FF D8 替换为 00 00\n\n"
+                "注意：修改前自动备份（除非 skip_backup=true）。"
+            ),
+            icon="🔄",
+            enabled=True,
+        )
 
 
 plugin = FileToolsPlugin()

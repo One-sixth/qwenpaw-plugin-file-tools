@@ -118,11 +118,11 @@ def file_tools_read_lines(
         for r in rows:
             r["line_number"] = str(int(r["line_number"])).zfill(width)
 
-    csv_output = format_csv(rows, fieldnames=["line_number", "content"], max_chars=max_chars)
+    csv_output = format_csv(rows, fieldnames=["line_number", "content"])
 
     if truncated:
         # 被截断的行内容不完整，建议从该行重新读取
-        next_line = start_line + len(rows)
+        next_line = int(rows[-1]["line_number"])
         csv_output += f"\n`<<truncated>>` 内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
 
     return csv_output
@@ -212,7 +212,13 @@ def file_tools_read_block(
         for r in rows:
             r["line_number"] = str(int(r["line_number"])).zfill(width)
 
-    return format_csv(rows, fieldnames=["line_number", "content"], max_chars=max_chars)
+    csv_output = format_csv(rows, fieldnames=["line_number", "content"])
+
+    if is_truncated:
+        next_line = int(rows[-1]["line_number"])
+        csv_output += f"\n`<<truncated>>` 内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
+
+    return csv_output
 
 
 # ── 8. file_tools_regex ───────────────────────────────────
@@ -294,7 +300,7 @@ def file_tools_regex(
     page_end = min(page_start + count, len(all_matches))
     page = all_matches[page_start:page_end]
 
-    csv_output = format_csv(page, fieldnames=["match_number", "line_number", "line_content", "matched_text"], max_chars=max_chars)
+    csv_output = format_csv(page, fieldnames=["match_number", "line_number", "line_content", "matched_text"])
 
     total_matches = len(all_matches)
     if page_end < total_matches:

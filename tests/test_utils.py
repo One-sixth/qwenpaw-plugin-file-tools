@@ -101,11 +101,13 @@ class TestFormatCsv:
         result = format_csv(rows, fieldnames=["name", "value"])
         assert '"a,b""c"' in result
 
-    def test_max_chars(self):
+    def test_max_chars_removed(self):
+        """max_chars 参数已移除，format_csv 不再截断。"""
         long = "x" * 2000
         rows = [{"content": long}]
-        result = format_csv(rows, fieldnames=["content"], max_chars=100)
-        assert "<<truncated>>" in result
+        result = format_csv(rows, fieldnames=["content"])
+        assert "<<truncated>>" not in result
+        assert "x" * 2000 in result
 
     def test_field_truncation(self):
         very_long = "x" * 5000

@@ -142,7 +142,6 @@ def truncate_line(line: str, max_len: int = LINE_CONTENT_TRUNCATE) -> str:
 def format_csv(
     rows: List[Dict[str, Any]],
     fieldnames: Optional[List[str]] = None,
-    max_chars: int = DEFAULT_MAX_CHARS,
 ) -> str:
     """将字典列表格式化为 CSV 字符串。"""
     if not rows:
@@ -159,7 +158,6 @@ def format_csv(
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
 
-    truncated = False
     for row in rows:
         safe_row = {}
         for k, v in row.items():
@@ -169,15 +167,7 @@ def format_csv(
                 safe_row[k] = v
         writer.writerow(safe_row)
 
-        if output.tell() > max_chars:
-            truncated = True
-            break
-
-    result = output.getvalue()
-    if truncated:
-        result += "<<truncated>>\n"
-
-    return result
+    return output.getvalue()
 
 
 # ── 纯文本结果 ────────────────────────────────────────────
@@ -315,3 +305,84 @@ def encode_path(path: str) -> str:
     path_bytes = path.encode("utf-8")
     hash_hex = hashlib.blake2b(path_bytes, digest_size=16).hexdigest()[:32]
     return f"{len(path)}{hash_hex}"
+
+
+# ── Hex 解析（用于字节级工具） ────────────────────────────
+
+
+def parse_hex(hex_str: str) -> bytes:
+    """解析 hex 字符串为 bytes。
+
+    规则：
+    - 允许空格，自动忽略
+    - 大小写不敏感
+    - 不可以 0x 或 \\x 开头
+    - 去掉空格后必须是有效 hex 字符
+    - 去掉空格后长度必须是 2 的倍数（不自动补 0）
+
+    Args:
+        hex_str: hex 字符串
+
+    Returns:
+        bytes: 解析后的字节数据
+
+    Raises:
+        ValueError: 格式不符合规则时抛出
+    """
+    import string
+
+    cleaned = hex_str.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "")
+
+    if not cleaned:
+        return b""
+
+    # 检查前缀
+    if cleaned.startswith("0x") or cleaned.startswith("\\x"):
+        raise ValueError(f"hex 字符串不可以以 0x 或 \\x 开头，请去掉前缀后重试")
+
+    # 检查长度
+    if len(cleaned) % 2 != 0:
+        raise ValueError(
+            f"hex 字符串长度 {len(cleaned)} 不是 2 的倍数，"
+            f"每个字节需要 2 个 hex 字符，请检查输入是否完整"
+        )
+
+    # 检查字符有效性
+    valid_hex = set(string.hexdigits)
+    for c in cleaned:
+        if c not in valid_hex:
+            raise ValueError(f"hex 字符串包含无效字符「{c}」，仅支持 0-9 A-F a-f")
+
+    return bytes.fromhex(cleaned)
+
+
+def format_hex(data: bytes, group_size: int = 16) -> str:
+    """将字节数据格式化为 hex 字符串（全大写）。
+
+    Args:
+        data: 字节数据
+        group_size: -1=不分组，0=报错，>0=每行显示多少字节
+
+    Returns:
+        hex 字符串
+
+    Raises:
+        ValueError: group_size=0 时抛出
+    """
+    if group_size == 0:
+        raise ValueError("group_size 不能为 0，请使用 -1（不分组）或正数（每行字节数）")
+
+    hex_str = data.hex().upper()
+
+    if group_size == -1:
+        return hex_str
+
+    # 按 group_size 分组，空格分隔
+    lines = []
+    for i in range(0, len(hex_str), group_size * 2):
+        chunk = hex_str[i : i + group_size * 2]
+        # 每两个字符一组加空格
+        grouped = " ".join(chunk[j : j + 2] for j in range(0, len(chunk), 2))
+        lines.append(grouped)
+
+    return "\n".join(lines)

@@ -19,6 +19,34 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 
+@pytest.fixture(autouse=True)
+def _mock_session_dir(monkeypatch: pytest.MonkeyPatch, tmp_dir: str) -> None:
+    """测试环境中 mock get_session_dir，使其返回临时目录下的路径。
+
+    需要覆盖所有模块的导入绑定，因为各模块通过
+    ``from ..utils import get_session_dir`` 值绑定了引用。
+    """
+    backup_root = os.path.join(tmp_dir, "_file_tools")
+
+    # 先导入各模块，让它们完成 import 绑定
+    import utils as utils_mod
+    import backup.manager
+    import tools.edit
+    import tools.info
+    import tools.history
+    import tools.write
+    import tools.bytes
+
+    # 覆盖每个模块的 get_session_dir 引用
+    utils_mod.get_session_dir = lambda: backup_root
+    backup.manager.get_session_dir = lambda: backup_root
+    tools.edit.get_session_dir = lambda: backup_root
+    tools.info.get_session_dir = lambda: backup_root
+    tools.history.get_session_dir = lambda: backup_root
+    tools.write.get_session_dir = lambda: backup_root
+    tools.bytes.get_session_dir = lambda: backup_root
+
+
 @pytest.fixture
 def tmp_dir() -> Generator[str, None, None]:
     tmp = tempfile.mkdtemp(prefix="file_tools_test_")
@@ -101,4 +129,14 @@ def chinese_file(tmp_dir: str) -> Generator[str, None, None]:
     content = "这是第一行\n这是第二行\n这是第三行\n"
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+    yield path
+
+
+@pytest.fixture
+def many_medium_lines_file(tmp_dir: str) -> Generator[str, None, None]:
+    """30 行，每行 ~50 字符，适合测试 max_chars 截断在中间行。"""
+    path = os.path.join(tmp_dir, "many_medium.txt")
+    lines = [f"第{i}行 - 这是一段测试文本，用来测试截断提示行号功能。" for i in range(1, 31)]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
     yield path

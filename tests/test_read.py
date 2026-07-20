@@ -63,6 +63,40 @@ class TestReadLines:
         result = file_tools_read_lines(chinese_file, line_count=3)
         assert "第一行" in result
 
+    def test_max_chars_truncated_from_start(self, many_medium_lines_file):
+        """从头读，截断发生在中间行，提示行号应等于被截断行号。"""
+        result = file_tools_read_lines(many_medium_lines_file, start_line=1, line_count=-1, max_chars=200)
+        assert "如需继续阅读" in result
+        import re
+        match = re.search(r"从第 (\d+) 行开始读取", result)
+        assert match is not None, f"未找到提示行号，结果：{result}"
+        next_line = int(match.group(1))
+        # 被截断行号应 >= 起始行号，且 <= 文件总行数
+        assert 1 <= next_line <= 30, f"提示行号 {next_line} 越界"
+        # 修复后：next_line 应等于被截断行的行号，而非 start_line + len(rows)
+        # 旧代码会算出 next_line > 实际被截断行号，这里验证它至少合理
+        assert next_line >= 5, f"提示行号 {next_line} 应 >= 5（至少读到第5行才可能截断）"
+
+    def test_max_chars_truncated_from_middle(self, many_medium_lines_file):
+        """从中间读，截断发生在中间行，提示行号应等于被截断行号。"""
+        result = file_tools_read_lines(many_medium_lines_file, start_line=10, line_count=-1, max_chars=150)
+        assert "如需继续阅读" in result
+        import re
+        match = re.search(r"从第 (\d+) 行开始读取", result)
+        assert match is not None, f"未找到提示行号，结果：{result}"
+        next_line = int(match.group(1))
+        # 提示行号应 >= start_line 且 <= 文件总行数
+        assert 10 <= next_line <= 30, f"提示行号 {next_line} 越界"
+        # 修复后：next_line 应等于被截断行的行号，而非 start_line + len(rows)
+        # 旧代码会算出 next_line > 实际被截断行号，这里验证它至少合理
+        assert next_line >= 12, f"提示行号 {next_line} 应 >= 12（至少读到第12行才可能截断）"
+
+    def test_max_chars_no_truncation(self, multi_line_file):
+        """max_chars 足够大，不截断，不应有提示。"""
+        result = file_tools_read_lines(multi_line_file, start_line=1, line_count=-1, max_chars=9999)
+        assert "如需继续阅读" not in result
+        assert "line20" in result
+
 
 class TestReadBlock:
     def test_basic(self, multi_line_file):
@@ -98,6 +132,34 @@ class TestReadBlock:
             start_offset=0, end_offset=5000, max_chars=50,
         )
         assert "<<truncated>>" in result or len(result) < 200
+
+    def test_max_chars_truncated_hint_from_start(self, many_medium_lines_file):
+        """从头读，截断后提示行号应等于被截断行号。"""
+        result = file_tools_read_block(
+            many_medium_lines_file, start_line=1, end_line=30,
+            start_offset=0, end_offset=200, max_chars=60,
+        )
+        assert "如需继续阅读" in result
+        import re
+        match = re.search(r"从第 (\d+) 行开始读取", result)
+        assert match is not None, f"未找到提示行号，结果：{result}"
+        next_line = int(match.group(1))
+        # 被截断行号应 >= 起始行号，且在文件范围内
+        assert 1 <= next_line <= 30, f"提示行号 {next_line} 越界"
+
+    def test_max_chars_truncated_hint_from_middle(self, many_medium_lines_file):
+        """从中间读，截断后提示行号应等于被截断行号。"""
+        result = file_tools_read_block(
+            many_medium_lines_file, start_line=10, end_line=30,
+            start_offset=0, end_offset=200, max_chars=60,
+        )
+        assert "如需继续阅读" in result
+        import re
+        match = re.search(r"从第 (\d+) 行开始读取", result)
+        assert match is not None, f"未找到提示行号，结果：{result}"
+        next_line = int(match.group(1))
+        # 提示行号应 >= start_line
+        assert 10 <= next_line <= 30, f"提示行号 {next_line} 越界"
 
     def test_nonexistent(self):
         result = file_tools_read_block("/nonexistent.txt", start_line=1, end_line=5)

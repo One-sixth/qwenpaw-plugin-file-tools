@@ -17,7 +17,7 @@ Windows 上读写时 \\\\n ↔ \\\\r\\\\n 由 Python 自动处理。
 import logging
 import os
 import re as re_module
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 try:
     from ..backup.manager import backup_file
@@ -47,9 +47,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _write_file(path: str, content: str, encoding: str) -> None:
-    """文本模式写入文件。"""
-    with open(path, "w", encoding=encoding) as f:
+def _write_file(path: str, content: str, encoding: str, newline: Optional[str] = None) -> None:
+    """文本模式写入文件。
+
+    newline 参数与 open() 的 newline 参数语义一致：
+    None=Python自动处理，\\n=LF，\\r\\n=CRLF。
+    """
+    with open(path, "w", encoding=encoding, newline=newline) as f:
         f.write(content)
 
 
@@ -60,13 +64,15 @@ def file_tools_append(
     path: str,
     content: str,
     encoding: str = "auto",
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """追加内容到文件末尾。修改前自动备份。
+    """追加内容到文件末尾。修改前自动备份。不会自动在文件末尾补换行符——如果文件末尾没有换行符，新增内容会直接接到最后一行后面。返回时显示文件末尾 3 行作为预览。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        content: 追加内容，\\r\\n/\\r 自动统一为 \\n
-        encoding: 编码，auto=自动检测
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错（请先用 QwenPaw 的 write_file 创建文件）。
+        content: 要追加的文本内容。\\r\\n 和 \\r 写入前自动统一为 \\n，避免文本模式二次转换导致 \\r\\r\\n。追加前不会自动补换行符——如需换行需在 content 开头加 \\n。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），\\n=Unix 风格（强制 LF），\\r\\n=Windows 风格（强制 CRLF）。
     """
     resolved = resolve_path(path)
 
@@ -86,8 +92,12 @@ def file_tools_append(
     # 统一换行符后再写入，避免文本模式二次转换 \\r\\n → \\r\\r\\n
     normalized = normalize_newlines(content)
 
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
+
     try:
-        with open(resolved, "a", encoding=resolved_encoding) as f:
+        with open(resolved, "a", encoding=resolved_encoding, newline=nl) as f:
             f.write(normalized)
     except Exception as e:
         return format_error("追加", f"写入文件时出错：{e}")
@@ -95,16 +105,13 @@ def file_tools_append(
     lines, _ = read_file_lines(resolved, resolved_encoding)
     total_lines = len(lines)
 
-    result_parts: List[str] = []
+    summary = f"成功追加：已在文件末尾追加了内容。文件共 {total_lines} 行。{format_backup_info(resolved, history_number)}"
+
+    result_parts: List[str] = [summary, ""]
     preview_start = max(0, total_lines - 3)
     for i in range(preview_start, total_lines):
         result_parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
 
-    if result_parts:
-        result_parts.append("")
-
-    result_parts.append(f"成功追加：已在文件末尾追加了内容。文件共 {total_lines} 行。")
-    result_parts.append(format_backup_info(resolved, history_number))
     return "\n".join(result_parts)
 
 
@@ -117,15 +124,17 @@ def file_tools_replace_lines(
     end_line: int,
     content: str,
     encoding: str = "auto",
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """整段替换文件中的指定行区间（行数可增减）。修改前自动备份。
+    """整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示「─── 替换前/替换后 ───」对称预览，正文区超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        start_line: 起始行号，1-based，范围 [1, EOF]
-        end_line: 结束行号，1-based，范围 [start, EOF]
-        content: 替换内容，含 \\n 拆成多行
-        encoding: 编码，auto=自动检测
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。
+        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。
+        content: 替换内容。用 \\n 拆成多行，因此可以增加或减少行数。\\r\\n/\\r 写入前自动统一为 \\n。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -156,20 +165,20 @@ def file_tools_replace_lines(
     new_lines_content = normalize_newlines(content).split("\n")
     lines[actual_start:actual_end] = new_lines_content
 
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
+
     try:
-        _write_file(resolved, "\n".join(lines), resolved_encoding)
+        _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("替换行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
     preview = _build_replace_preview(old_lines, lines, start_line - 1, actual_end, actual_end - actual_start)
 
-    return "\n".join([
-        preview,
-        "",
-        f"成功替换：已将第 {start_line}~{end_line} 行替换为 {len(new_lines_content)} 行新内容。文件共 {new_total} 行。",
-        format_backup_info(resolved, history_number),
-    ])
+    summary = f"成功替换：已将第 {start_line}~{end_line} 行替换为 {len(new_lines_content)} 行新内容。文件共 {new_total} 行。{format_backup_info(resolved, history_number)}"
+    return "\n".join([summary, "", preview])
 
 
 def _build_replace_preview(lines_before, lines_after, start_line, end_line, old_count):
@@ -238,14 +247,16 @@ def file_tools_insert_lines(
     line: int,
     content: str,
     encoding: str = "auto",
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """在指定行号前插入新内容。修改前自动备份。
+    """在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示「─── 插入前/后 ───」预览，前后各一行上下文，插入行超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        line: 插入位置（在 line 行之前插入），1-based
-        content: 插入内容，含 \\n 拆成多行
-        encoding: 编码，auto=自动检测
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        line: 插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。
+        content: 要插入的文本内容。用 \\n 拆成多行，因此可以一次插入多行。\\r\\n/\\r 写入前自动统一为 \\n。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -267,18 +278,73 @@ def file_tools_insert_lines(
     insert_pos = min(line - 1, total_lines)
     insert_lines = normalize_newlines(content).split("\n")
     insert_count = len(insert_lines)
+
+    old_lines = lines.copy()
     lines[insert_pos:insert_pos] = insert_lines
 
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
+
     try:
-        _write_file(resolved, "\n".join(lines), resolved_encoding)
+        _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("插入行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
+
+    # 构建插入预览：─── 插入前/后 ───，前后各一行上下文，超 6 行截断
+    _MAX_BODY = 6
+    parts = []
+
+    # ── 插入前 ──
+    parts.append("─── 插入前 ───")
+    show_start = max(0, insert_pos - 2)
+    show_end = min(total_lines, insert_pos + 2)
+    if show_start > 0:
+        parts.append("  <<省略>>")
+    for i in range(show_start, show_end):
+        parts.append(f"{i + 1}\t{truncate_line(old_lines[i])}")
+    if show_end < total_lines:
+        parts.append("  <<省略>>")
+
+    parts.append("")
+    parts.append("─── 插入后 ───")
+
+    # ── 插入后：上下文 + 正文（正文超 _MAX_BODY 行时截断） ──
+    new_show_start = max(0, insert_pos - 2)
+    if new_show_start > 0:
+        parts.append("  <<省略>>")
+
+    # 上下文：插入位置前的行
+    for i in range(new_show_start, insert_pos):
+        parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
+
+    # 正文：新插入的行（超过 _MAX_BODY 行时截断）
+    if insert_count > _MAX_BODY:
+        for i in range(insert_pos, insert_pos + 2):
+            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
+        parts.append("  <<省略>>")
+        for i in range(insert_pos + insert_count - 2, insert_pos + insert_count):
+            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
+    else:
+        for i in range(insert_pos, insert_pos + insert_count):
+            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
+
+    # 上下文：插入位置后的行
+    new_show_end = min(new_total, insert_pos + insert_count + 2)
+    for i in range(insert_pos + insert_count, new_show_end):
+        parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
+    if new_show_end < new_total:
+        parts.append("  <<省略>>")
+
+    preview = "\n".join(parts)
+
     return (
         f"成功插入：已在第 {line} 行前插入了 {insert_count} 行内容。"
         f"文件从 {total_lines} 行变为 {new_total} 行。"
-        f"\n{format_backup_info(resolved, history_number)}"
+        f"{format_backup_info(resolved, history_number)}\n\n"
+        f"{preview}"
     )
 
 
@@ -290,14 +356,16 @@ def file_tools_delete_lines(
     start_line: int,
     end_line: int,
     encoding: str = "auto",
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """删除文件中的指定行区间。修改前自动备份。
+    """删除文件中指定行区间的文本。修改前自动备份。返回时显示「─── 删除前/后 ───」对比，被删除的行标记（被删除）。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        start_line: 起始行号，1-based，范围 [1, EOF]
-        end_line: 结束行号，1-based，范围 [start, EOF]
-        encoding: 编码，auto=自动检测
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。
+        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -326,8 +394,12 @@ def file_tools_delete_lines(
     actual_end = min(end_line, total_lines)
     del lines[actual_start:actual_end]
 
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
+
     try:
-        _write_file(resolved, "\n".join(lines), resolved_encoding)
+        _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("删除行", f"写入文件时出错：{e}")
 
@@ -358,12 +430,9 @@ def file_tools_delete_lines(
     if new_total > actual_start + (show_end - show_start) - 2:
         parts.append("<<省略>>")
 
-    parts.append("")
-    parts.append(
-        f"成功删除：已删除第 {start_line}~{end_line} 行（共 {actual_end - actual_start} 行）。"
-        f"文件从 {total_lines} 行变为 {new_total} 行。"
-    )
-    parts.append(format_backup_info(resolved, history_number))
+    summary = f"成功删除：已删除第 {start_line}~{end_line} 行（共 {actual_end - actual_start} 行）。文件从 {total_lines} 行变为 {new_total} 行。{format_backup_info(resolved, history_number)}"
+    parts.insert(0, summary)
+    parts.insert(1, "")
     return "\n".join(parts)
 
 
@@ -376,30 +445,34 @@ def file_tools_replace(
     new_text: str,
     start_line: int = 1,
     end_line: Optional[int] = None,
-    start: int = 1,
-    count: int = -1,
+    count: int = 1,
     encoding: str = "auto",
     dry_run: bool = False,
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """精确子串查找替换（str.replace，区分大小写）。修改前自动备份。
+    """精确子串查找替换（str.replace），支持跨行匹配。修改前自动备份。old_text 和 new_text 均不做转义处理——传入真实换行符即可跨行匹配。提供 dry_run 模式预览替换结果而不实际修改。返回时附带 unified diff 格式的差异预览。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        old_text: 要查找的文本，精确匹配
-        new_text: 替换成的文本
-        start_line: 搜索起始行，1-based，默认1
-        end_line: 搜索结束行，1-based，默认文件末尾
-        start: 从第几个匹配开始替换，1-based，默认1
-        count: 替换次数，-1=全部替换，默认
-        encoding: 编码，auto=自动检测
-        dry_run: true=只统计不修改
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        old_text: 要查找的文本，精确字串匹配。不做正则转义，传入真实换行符 \\n 即可跨行匹配。不能为空。
+        new_text: 替换成的文本。不做转义处理，与 old_text 的匹配方式一致。
+        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
+        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
+        count: 替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
         return format_error("替换", f"文件「{resolved}」不存在")
-    if start_line < 1:
-        return format_error("替换", f"起始行号 {start_line} 不合法")
+
+    if not old_text:
+        return format_error("替换", "old_text 不能为空字符串")
+
+    if count < 1:
+        return format_error("替换", f"count 参数值 {count} 不合法，必须 >= 1")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
@@ -407,82 +480,83 @@ def file_tools_replace(
         return format_error("替换", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
-    actual_start = max(0, start_line - 1)
-    actual_end = min(end_line or total_lines, total_lines)
+    if start_line < 1:
+        return format_error("替换", f"起始行号 {start_line} 不合法")
 
-    if start < 1:
-        return format_error("替换", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始替换」，最小值为 1。")
+    actual_start = start_line - 1
+    if actual_start >= total_lines:
+        return format_error("替换", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
 
-    total_matches = 0
-    for i in range(actual_start, actual_end):
-        total_matches += lines[i].count(old_text)
+    actual_end = end_line if end_line is not None else total_lines
+    actual_end = min(actual_end, total_lines)
+    if actual_end < actual_start:
+        actual_end = actual_start
 
-    if total_matches == 0:
+    # 拼接搜索范围（跨行匹配）
+    range_lines = lines[actual_start:actual_end]
+    range_content = "\n".join(range_lines)
+
+    # 统计匹配次数
+    match_count = range_content.count(old_text)
+    if match_count == 0:
         return (
             f"替换失败，因为在「{resolved}」第 {start_line}~{actual_end} 行范围内"
             f"未找到匹配「{old_text}」的内容。"
         )
 
-    effective_start = start
-    if count == -1:
-        replace_count = total_matches - (effective_start - 1)
-    else:
-        replace_count = min(count, total_matches - (effective_start - 1))
-
-    if replace_count <= 0:
-        return f"替换失败，因为从第 {start} 个匹配开始，剩余匹配数不足。"
+    effective_count = min(count, match_count)
 
     if dry_run:
         return (
             f"⚠️ dry_run 模式 — 以下为模拟修改结果，未实际修改文件。\n\n"
             f"模拟替换：在「{resolved}」第 {start_line}~{actual_end} 行范围内"
-            f"将替换 {total_matches} 处。"
+            f"将替换 {effective_count} 处（共匹配到 {match_count} 处）。"
         )
 
+    # 备份
     history_number = backup_file(resolved)
     if history_number is None:
         return format_error("替换", "备份原文件失败。因为获取会话文件路径失败。")
 
-    replaced = 0
-    skip = effective_start - 1
-    for i in range(actual_start, actual_end):
-        if count != -1 and replaced >= replace_count:
-            break
-        line = lines[i]
-        line_match_count = line.count(old_text)
-        if line_match_count == 0:
-            continue
+    # 执行替换（跨行匹配）
+    new_range = range_content.replace(old_text, new_text, effective_count)
 
-        if skip >= line_match_count:
-            skip -= line_match_count
-            continue
+    # 替换回 lines
+    new_lines = lines.copy()
+    new_range_lines = new_range.split("\n")
+    new_lines[actual_start:actual_end] = new_range_lines
 
-        if skip > 0:
-            pos = 0
-            for _ in range(skip):
-                pos = line.find(old_text, pos) + len(old_text)
-            remaining = line[pos:]
-            can_replace = replace_count - replaced
-            replaced_in_line = min(can_replace, remaining.count(old_text))
-            if replaced_in_line > 0:
-                remaining = remaining.replace(old_text, new_text, replaced_in_line)
-                replaced += replaced_in_line
-            lines[i] = line[:pos] + remaining
-            skip = 0
-        else:
-            need = replace_count - replaced
-            lines[i] = line.replace(old_text, new_text, need)
-            replaced += min(need, line_match_count)
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
 
+    # 写入文件
     try:
-        _write_file(resolved, "\n".join(lines), resolved_encoding)
+        _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("替换", f"写入文件时出错：{e}")
 
+    # 生成 diff 预览（difflib.unified_diff, n=1）
+    import difflib
+
+    original_with_nl = [l + '\n' for l in lines]
+    modified_with_nl = [l + '\n' for l in new_lines]
+
+    diff = difflib.unified_diff(
+        original_with_nl,
+        modified_with_nl,
+        fromfile='original',
+        tofile='modified',
+        n=1,
+    )
+    diff_text = ''.join(diff)
+
+    new_total = len(new_lines)
     return (
         f"成功替换：在「{resolved}」第 {start_line}~{actual_end} 行范围内"
-        f"替换了 {replaced} 处。"
-        f"\n{format_backup_info(resolved, history_number)}"
+        f"替换了 {effective_count} 处。文件从 {total_lines} 行变为 {new_total} 行。"
+        f"{format_backup_info(resolved, history_number)}\n\n"
+        f"{diff_text}"
     )
 
 
@@ -496,27 +570,32 @@ def file_tools_regex_replace(
     start_line: int = 1,
     end_line: Optional[int] = None,
     start: int = 1,
-    count: int = -1,
+    count: int = 1,
     encoding: str = "auto",
     dry_run: bool = False,
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """正则替换文件内容（re.sub）。修改前自动备份。
+    """正则替换文件内容（re.finditer + 从后往前替换），支持跨行匹配。修改前自动备份。从后往前逐个替换，避免偏移漂移。支持 \\1、\\g<name> 等反向引用。提供 dry_run 模式预览。返回时附带 unified diff 格式的差异预览。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
-        path: 文件路径
-        pattern: 正则表达式，Python re 语法
-        replacement: 替换字符串，支持 \\1 / \\g<name> 等反向引用
-        start_line: 搜索起始行，1-based，默认1
-        end_line: 搜索结束行，1-based，默认文件末尾
-        start: 从第几个匹配开始替换，1-based，默认1
-        count: 替换次数，-1=全部替换，默认
-        encoding: 编码，auto=自动检测
-        dry_run: true=只统计不修改
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        pattern: 正则表达式，Python re 语法。拼接行范围后整体匹配，支持跨行匹配。不能为空字符串。
+        replacement: 替换字符串，支持 \\1、\\g<name> 等反向引用。Python re.sub 的 expand 语义。
+        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
+        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
+        start: 从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。
+        count: 替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
         return format_error("正则替换", f"文件「{resolved}」不存在")
+
+    if not pattern:
+        return format_error("正则替换", "pattern 不能为空字符串。请传入有效的正则表达式。")
 
     try:
         compiled = re_module.compile(pattern)
@@ -528,16 +607,37 @@ def file_tools_regex_replace(
     except Exception as e:
         return format_error("正则替换", f"读取文件时出错：{e}")
 
+    # ── 参数校验 ──────────────────────────────────────────
+
     total_lines = len(lines)
-    actual_start = max(0, start_line - 1)
-    actual_end = min(end_line or total_lines, total_lines)
 
     if start < 1:
         return format_error("正则替换", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始替换」，最小值为 1。")
 
-    total_matches = 0
-    for i in range(actual_start, actual_end):
-        total_matches += len(compiled.findall(lines[i]))
+    if count == 0:
+        return format_error("正则替换", "count 参数值 0 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
+    if count < -1:
+        return format_error("正则替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
+
+    if start_line < 1:
+        return format_error("正则替换", f"start_line 参数值 {start_line} 不合法。行号从 1 开始，最小值为 1。")
+    if end_line is not None and end_line < 1:
+        return format_error("正则替换", f"end_line 参数值 {end_line} 不合法。行号从 1 开始，最小值为 1。")
+    if end_line is not None and end_line < start_line:
+        return format_error("正则替换", f"end_line ({end_line}) 小于 start_line ({start_line})，参数矛盾。")
+    if start_line > total_lines:
+        return format_error("正则替换", f"start_line 参数值 {start_line} 超出文件范围。文件共 {total_lines} 行。")
+
+    actual_start = start_line - 1
+    actual_end = min(end_line or total_lines, total_lines)
+
+    # 拼接行范围（跨行匹配）
+    range_lines = lines[actual_start:actual_end]
+    range_content = "\n".join(range_lines)
+
+    # 收集所有匹配
+    all_matches = list(compiled.finditer(range_content))
+    total_matches = len(all_matches)
 
     if total_matches == 0:
         return (
@@ -545,14 +645,20 @@ def file_tools_regex_replace(
             f"未找到匹配「{pattern}」的内容。"
         )
 
-    effective_start = start
-    if count == -1:
-        replace_count = total_matches - (effective_start - 1)
-    else:
-        replace_count = min(count, total_matches - (effective_start - 1))
+    # 计算要替换的范围（从后往前）
+    skip = start - 1
+    if skip >= total_matches:
+        return format_error("正则替换", f"start 参数值 {start} 超出匹配总数（共 {total_matches} 个匹配）。")
 
-    if replace_count <= 0:
+    if count == -1:
+        effective_matches = all_matches[skip:]
+    else:
+        effective_matches = all_matches[skip:skip + count]
+
+    if not effective_matches:
         return f"正则替换失败，因为从第 {start} 个匹配开始，剩余匹配数不足。"
+
+    replace_count = len(effective_matches)
 
     if dry_run:
         return (
@@ -565,33 +671,137 @@ def file_tools_regex_replace(
     if history_number is None:
         return format_error("正则替换", "备份原文件失败。因为获取会话文件路径失败。")
 
-    replaced = 0
-    skip = effective_start - 1
-    hit_limit = False
+    # 从后往前替换，避免偏移漂移
+    old_range = range_content
+    for m in reversed(effective_matches):
+        range_content = range_content[:m.start()] + m.expand(replacement) + range_content[m.end():]
 
-    def _replacer(m):
-        nonlocal replaced, skip, hit_limit
-        if skip > 0:
-            skip -= 1
-            return m.group(0)
-        if count != -1 and replaced >= replace_count:
-            hit_limit = True
-            return m.group(0)
-        replaced += 1
-        return re_module.sub(compiled, replacement, m.group(0))
+    # 替换回 lines
+    new_lines = lines.copy()
+    new_lines[actual_start:actual_end] = range_content.split("\n")
 
-    for i in range(actual_start, actual_end):
-        if hit_limit:
-            break
-        lines[i] = compiled.sub(_replacer, lines[i])
+    # 解析 line_separator
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
 
     try:
-        _write_file(resolved, "\n".join(lines), resolved_encoding)
+        _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("正则替换", f"写入文件时出错：{e}")
 
+    # 生成 unified diff 预览
+    import difflib
+    original_with_nl = [l + '\n' for l in lines]
+    modified_with_nl = [l + '\n' for l in new_lines]
+    diff = difflib.unified_diff(
+        original_with_nl,
+        modified_with_nl,
+        fromfile='original',
+        tofile='modified',
+        n=1,
+    )
+    diff_text = ''.join(diff)
+
+    new_total = len(new_lines)
     return (
-        f"成功替换：\n"
-        f"  匹配到 {total_matches} 处，成功替换了 {replaced} 处。"
-        f"\n{format_backup_info(resolved, history_number)}"
+        f"成功替换了 {replace_count} 处。文件从 {total_lines} 行变为 {new_total} 行。"
+        f"{format_backup_info(resolved, history_number)}\n\n"
+        f"{diff_text}"
+    )
+# ── 15. file_tools_indent_lines ──────────────────────────
+
+
+def file_tools_indent_lines(
+    path: str,
+    start_line: int = 1,
+    end_line: Optional[int] = None,
+    mode: str = "expand",
+    count: int = 4,
+    char: str = " ",
+    line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
+    encoding: str = "auto",
+) -> str:
+    """调整文件中指定行范围的行首缩进，支持增加（expand）和减少（shrink）两种模式。修改前自动备份。shrink 模式最多删除到行首非空白字符为止，不会删除非空白内容。返回时显示 +/- diff 格式预览（只显示有变化的行）。
+
+    Args:
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
+        start_line: 起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
+        end_line: 结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
+        mode: 缩进模式。expand=增加缩进（默认），shrink=减少缩进。shrink 时最多删除到行首第一个非空白字符。
+        count: 添加或删除的空白字符数量。默认 4。必须 >= 0。
+        char: 填充字符。默认空格（' '），也可传 '\\t' 使用制表符。仅 expand 模式使用。
+        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+    """
+    resolved = resolve_path(path)
+
+    if not os.path.isfile(resolved):
+        return format_error("缩进调整", f"文件「{resolved}」不存在")
+    if start_line < 1:
+        return format_error("缩进调整", f"起始行号 {start_line} 不合法")
+    if mode not in ("expand", "shrink"):
+        return format_error("缩进调整", f"模式 {mode} 不合法，仅支持 expand 和 shrink")
+    if count < 0:
+        return format_error("缩进调整", f"数量 {count} 不合法，必须 >= 0")
+    if not char:
+        return format_error("缩进调整", "填充字符不能为空")
+
+    try:
+        lines, resolved_encoding = read_file_lines(resolved, encoding)
+    except Exception as e:
+        return format_error("缩进调整", f"读取文件时出错：{e}")
+
+    total_lines = len(lines)
+    if total_lines == 0:
+        return "缩进调整失败，因为文件为空。"
+    if start_line > total_lines:
+        return format_error("缩进调整", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
+
+    actual_start = start_line - 1
+    actual_end = min(end_line or total_lines, total_lines)
+
+    changes: List[Tuple[int, str, str]] = []
+    for i in range(actual_start, actual_end):
+        old_line = lines[i]
+        if mode == "expand":
+            lines[i] = char * count + old_line
+        else:  # shrink
+            stripped = old_line.lstrip()
+            leading = len(old_line) - len(stripped)
+            remove = min(count, leading)
+            lines[i] = old_line[remove:]
+
+        if lines[i] != old_line:
+            changes.append((i + 1, old_line, lines[i]))
+
+    if not changes:
+        return "缩进调整失败，因为没有行被修改。"
+
+    history_number = backup_file(resolved)
+    if history_number is None:
+        return format_error("缩进调整", "备份原文件失败。因为获取会话文件路径失败。")
+
+    # 根据 line_separator 选择 newline 参数
+    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+    nl = newline_map.get(line_separator, None)
+
+    try:
+        content = "\n".join(lines)
+        with open(resolved, "w", encoding=resolved_encoding, newline=nl) as f:
+            f.write(content)
+    except Exception as e:
+        return format_error("缩进调整", f"写入文件时出错：{e}")
+
+    # 构建 diff 预览
+    diff_parts = []
+    for row_num, old, new in changes:
+        diff_parts.append(f"- {row_num} > {truncate_line(old)}")
+        diff_parts.append(f"+ {row_num} > {truncate_line(new)}")
+    diff_text = "\n".join(diff_parts)
+
+    mode_text = "增加了" if mode == "expand" else "减少了"
+    return (
+        f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text}{count} 个缩进。"
+        f"{format_backup_info(resolved, history_number)}\n\n"
+        f"{diff_text}\n"
     )

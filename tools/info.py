@@ -1,7 +1,7 @@
 """信息读取类工具。
 
 包含：
-- file_tools_listdir: 列出目录内容（CSV）
+- file_tools_listdir: 列出目录内容（纯文本/Markdown）
 - file_tools_info: 查看文件元数据（JSON）
 - file_tools_guess: 猜测文件类型（JSON）
 - file_tools_diff: 文件差异对比（unified diff）
@@ -54,18 +54,25 @@ def file_tools_listdir(
     path: str,
     recursive: int = 1,
     columns: Optional[List[str]] = None,
+    absolute: bool = False,
+    start: int = 1,
+    count: int = 500,
+    sort_by: str = "name",
+    ascending: bool = True,
 ) -> str:
-    """列出目录内容，返回 CSV。
+    """列出目录内容。支持递归遍历、自定义属性列、排序和分页。无 columns 时返回纯文本列表（一行一文件），有 columns 时返回 Markdown 表格。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。
 
     Args:
-        path: 目录路径
-        recursive: 1=当前目录，2=当前+一层子目录，-1=无限递归
-        columns: 额外属性列（size, permissions, type, modified_at, created_at, extension）
-
-    Returns:
-        CSV 格式字符串
+        path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。
+        columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（文件/文件夹/链接）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
+        absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。
+        start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。
+        count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。
+        sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。
+        ascending: 排序方向。True=升序排列（默认），False=降序排列。
     """
-    # 参数校验
+    # ── 参数校验 ──
     if recursive not in (1, 2, -1):
         return (
             f"列出目录失败，因为 recursive 参数值 {recursive} 不合法。"
@@ -79,13 +86,36 @@ def file_tools_listdir(
             f"请使用 file_tools_info(path=\"{path}\") 确认路径是否正确。"
         )
 
-    columns = columns or []
+    if start < 1:
+        return (
+            f"列出目录失败，因为 start 参数值 {start} 不合法。"
+            f"start 表示「从第几个文件开始显示」，最小值为 1。"
+        )
 
-    # 支持的列名
+    if count < 1 or count > 500:
+        return (
+            f"列出目录失败，因为 count 参数值 {count} 不合法。"
+            f"count 范围为 1~500。"
+        )
+
+    valid_sort = {"name", "size", "permissions", "type", "modified_at", "created_at", "extension"}
+    if sort_by not in valid_sort:
+        return (
+            f"列出目录失败，因为 sort_by 参数值「{sort_by}」不合法。"
+            f"合法值为：{', '.join(sorted(valid_sort))}。"
+        )
+
+    # ── 确定需要收集的列 ──
+    columns = columns or []
     valid_columns = {"size", "permissions", "type", "modified_at", "created_at", "extension"}
     extra_columns = [c for c in columns if c in valid_columns]
-    fieldnames = ["name"] + extra_columns
 
+    # 排序所需的列（sort_by 不是 name 时，需要在 scan 时额外收集）
+    gather_set = set(extra_columns)
+    if sort_by != "name" and sort_by in valid_columns:
+        gather_set.add(sort_by)
+
+    # ── 扫描 ──
     rows: List[Dict[str, Any]] = []
     file_count = 0
     max_files = 10000
@@ -93,7 +123,7 @@ def file_tools_listdir(
     def _scan(dir_path: str, current_depth: int, max_depth: int):
         nonlocal file_count
         try:
-            items = sorted(os.listdir(dir_path), key=lambda x: (not os.path.isdir(os.path.join(dir_path, x)), x.lower()))
+            items = os.listdir(dir_path)
         except PermissionError:
             return
 
@@ -102,14 +132,20 @@ def file_tools_listdir(
                 return
 
             full_path = os.path.join(dir_path, item)
-            row: Dict[str, Any] = {"name": item}
+
+            if absolute:
+                name = full_path
+            else:
+                name = os.path.relpath(full_path, resolved)
+
+            row: Dict[str, Any] = {"name": name}
 
             try:
                 st = os.stat(full_path)
             except OSError:
                 continue
 
-            for col in extra_columns:
+            for col in gather_set:
                 if col == "size":
                     try:
                         row["size"] = st.st_size
@@ -135,7 +171,6 @@ def file_tools_listdir(
             rows.append(row)
             file_count += 1
 
-            # 递归处理子目录
             if current_depth < max_depth and os.path.isdir(full_path):
                 _scan(full_path, current_depth + 1, max_depth)
 
@@ -146,12 +181,48 @@ def file_tools_listdir(
     elif recursive == -1:
         _scan(resolved, 1, 99999)
 
-    csv_output = format_csv(rows, fieldnames=fieldnames)
+    if not rows:
+        return "（空目录，无文件）"
+
+    # ── 排序 ──
+    if sort_by == "name":
+        rows.sort(key=lambda r: r["name"].lower(), reverse=not ascending)
+    else:
+        rows.sort(key=lambda r: r.get(sort_by, ""), reverse=not ascending)
+
+    # ── 分页 ──
+    total = len(rows)
+    start_idx = start - 1
+    if start_idx >= total:
+        return f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）"
+
+    end_idx = min(start_idx + count, total)
+    page = rows[start_idx:end_idx]
+
+    # ── 输出格式 ──
+    if not extra_columns:
+        # 纯文本列表
+        output = "\n".join(row["name"] for row in page)
+    else:
+        # Markdown 表格
+        fieldnames = ["name"] + extra_columns
+        header = "| " + " | ".join(fieldnames) + " |"
+        separator = "|" + "|".join("---" for _ in fieldnames) + "|"
+        data_lines = []
+        for row in page:
+            data_lines.append("| " + " | ".join(str(row.get(col, "")) for col in fieldnames) + " |")
+        output = header + "\n" + separator + "\n" + "\n".join(data_lines)
+
+    # ── 尾部信息 ──
+    end_display = start + len(page) - 1
+    remaining = total - end_display
+    if remaining > 0:
+        output += f"\n\n当前列出的文件 {start}~{end_display}，后面还有 {remaining} 个文件。"
 
     if file_count >= max_files:
-        csv_output += "\n结果过多，仅返回前 10000 条。如需缩小范围，请指定更具体的目录路径。\n"
+        output += "\n目标文件夹搜索文件超过10000条，当前可以通过翻页 获取前10000条文件信息。如需获取更多的文件条目，请尝试其他方法。\n"
 
-    return csv_output
+    return output
 
 
 # ── 2. file_tools_info ────────────────────────────────────
@@ -160,37 +231,37 @@ def file_tools_listdir(
 def file_tools_info(
     path: str,
 ) -> str:
-    """查看文件/目录元数据，返回 JSON。
+    """查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回提示信息。
 
     Args:
-        path: 文件或目录路径
-
-    Returns:
-        JSON 字符串
+        path: 文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时返回提示，请检查路径拼写。
     """
     resolved = resolve_path(path)
-    exists = os.path.exists(resolved)
+    if not os.path.exists(resolved):
+        return (
+            f"查看文件信息失败，因为路径「{resolved}」不存在。"
+            f"请使用 file_tools_listdir 确认文件是否存在，或检查路径拼写是否正确。"
+        )
+
+    try:
+        st = os.stat(resolved)
+    except OSError as e:
+        return json.dumps({
+            "path": resolved,
+            "error": f"无法读取文件元数据: {e}",
+        }, ensure_ascii=False)
 
     info: Dict[str, Any] = {
         "path": resolved,
-        "exists": exists,
+        "exists": True,
+        "size": st.st_size,
+        "is_dir": os.path.isdir(resolved),
+        "is_file": os.path.isfile(resolved),
+        "is_link": os.path.islink(resolved),
+        "permissions": stat.filemode(st.st_mode),
+        "created_at": datetime.fromtimestamp(st.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
+        "modified_at": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
     }
-
-    if exists:
-        try:
-            st = os.stat(resolved)
-            info["size"] = st.st_size
-            info["is_dir"] = os.path.isdir(resolved)
-            info["is_file"] = os.path.isfile(resolved)
-            info["is_link"] = os.path.islink(resolved)
-            info["permissions"] = stat.filemode(st.st_mode)
-            info["created_at"] = datetime.fromtimestamp(st.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
-            info["modified_at"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        except OSError as e:
-            return json.dumps({
-                "path": resolved,
-                "error": f"无法读取文件元数据: {e}",
-            }, ensure_ascii=False)
 
     return json.dumps(info, ensure_ascii=False, indent=2)
 
@@ -201,13 +272,10 @@ def file_tools_info(
 def file_tools_guess(
     path: str,
 ) -> str:
-    """猜测文件类型，返回 JSON。
+    """猜测文件类型和编码，返回 JSON 格式。依赖 puremagic 库根据文件魔数（magic number）检测类型，辅以 chardet 检测文本编码。目录直接返回 type 为 directory。puremagic 或 chardet 未安装时降级处理。
 
     Args:
-        path: 文件路径
-
-    Returns:
-        JSON 字符串
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。如果是目录直接返回 type=directory，不执行魔数检测。
     """
     resolved = resolve_path(path)
 
@@ -241,17 +309,14 @@ def file_tools_diff(
     count: int = 10,
     max_chars: int = 2048,
 ) -> str:
-    """文件差异对比，返回 unified diff 格式。
+    """对比两个文件的差异，返回 unified diff 格式。支持 hunk 分页，可指定从第几个差异块开始显示。文件相同时返回「文件相同，没有差异。」
 
     Args:
-        path_a: 旧文件路径
-        path_b: 新文件路径
-        start: 从第几个 hunk 开始（1-based）
-        count: 最多显示多少个 hunk
-        max_chars: 返回内容总字符上限
-
-    Returns:
-        unified diff 字符串
+        path_a: 旧文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        path_b: 新文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        start: 起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。
+        count: 最多显示多少个差异块，默认 10。
+        max_chars: 返回内容总字符上限，默认 2048。超过时自动截断。
     """
     resolved_a = resolve_path(path_a)
     resolved_b = resolve_path(path_b)
@@ -321,13 +386,10 @@ def file_tools_diff(
 def file_tools_history(
     path: str,
 ) -> str:
-    """查看文件历史版本，返回 JSON。
+    """查看文件的历史备份版本列表，返回 JSON 格式。包含每个历史版本的编号（history_number）和创建时间。文件没有历史版本时返回空列表。历史版本由修改类工具（append、replace_lines 等）在修改前自动创建。
 
     Args:
-        path: 文件路径
-
-    Returns:
-        JSON 字符串
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时返回对应的错误信息。
     """
     resolved = resolve_path(path)
 

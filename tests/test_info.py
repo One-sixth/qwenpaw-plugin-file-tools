@@ -1,7 +1,5 @@
 """测试信息读取类工具。"""
 
-import csv
-import io
 import json
 import os
 
@@ -12,6 +10,15 @@ from tools.info import (
     file_tools_info,
     file_tools_listdir,
 )
+
+
+def _make_files(dir_path, names):
+    for n in names:
+        path = os.path.join(dir_path, n)
+        if n.endswith("/"):
+            os.makedirs(path, exist_ok=True)
+        else:
+            open(path, "w").close()
 
 
 class TestListdir:
@@ -25,22 +32,24 @@ class TestListdir:
     def test_with_columns(self, tmp_dir):
         open(os.path.join(tmp_dir, "test.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, recursive=1, columns=["size", "type"])
-        assert "name" in result
-        assert "size" in result
-        assert "type" in result
+        assert "| name" in result
+        assert "| size" in result
+        assert "| type" in result
+        assert "|---" in result
 
     def test_recursive_2(self, subdir_structure):
         result = file_tools_listdir(subdir_structure, recursive=2)
-        assert "sub_file1.txt" in result
-        assert "sub_file2.txt" in result
+        assert "dir_a" + os.sep + "sub_file1.txt" in result
+        assert "dir_a" + os.sep + "sub_dir1" in result
+        assert "dir_b" + os.sep + "sub_file2.txt" in result
         assert "file_a.txt" in result
         assert ".hidden" in result
 
     def test_recursive_minus1(self, subdir_structure):
         result = file_tools_listdir(subdir_structure, recursive=-1)
-        assert "sub_file1.txt" in result
-        assert "sub_file2.txt" in result
-        assert "sub_dir1" in result
+        assert "dir_a" + os.sep + "sub_file1.txt" in result
+        assert "dir_a" + os.sep + "sub_dir1" in result
+        assert "dir_b" + os.sep + "sub_file2.txt" in result
 
     def test_invalid_recursive(self, tmp_dir):
         result = file_tools_listdir(tmp_dir, recursive=0)
@@ -61,28 +70,170 @@ class TestListdir:
         assert ".hidden" in result
 
     def test_sort_order(self, tmp_dir):
+        """默认按 name 升序排列，目录和文件混在一起按名称排。"""
         open(os.path.join(tmp_dir, "z_last.txt"), "w").close()
         os.makedirs(os.path.join(tmp_dir, "a_dir"))
         open(os.path.join(tmp_dir, "b_file.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, recursive=1)
-        assert "name" in result
+        lines = result.strip().split("\n")
+        a_idx = next(i for i, l in enumerate(lines) if l == "a_dir")
+        b_idx = next(i for i, l in enumerate(lines) if l == "b_file.txt")
+        z_idx = next(i for i, l in enumerate(lines) if l == "z_last.txt")
+        assert a_idx < b_idx < z_idx
 
-    def test_csv_format(self, tmp_dir):
+    def test_markdown_table_format(self, tmp_dir):
         open(os.path.join(tmp_dir, "normal.csv"), "w").close()
-        result = file_tools_listdir(tmp_dir, recursive=1)
-        reader = csv.DictReader(io.StringIO(result))
-        rows = list(reader)
-        assert len(rows) >= 1
-        assert "name" in rows[0]
+        result = file_tools_listdir(tmp_dir, recursive=1, columns=["size"])
+        lines = result.strip().split("\n")
+        assert lines[0].startswith("| name")
+        assert lines[1].startswith("|---")
+        assert "normal.csv" in lines[2]
 
     def test_empty_dir(self, tmp_dir):
         result = file_tools_listdir(tmp_dir, recursive=1)
-        assert len(result.strip().split("\n")) >= 1
+        assert result == "（空目录，无文件）"
 
     def test_permission_column(self, tmp_dir):
         open(os.path.join(tmp_dir, "perm.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, recursive=1, columns=["permissions"])
-        assert "permissions" in result
+        assert "| permissions" in result
+        # 纯文本列表没有表头
+        result_no_col = file_tools_listdir(tmp_dir, recursive=1)
+        assert "permissions" not in result_no_col
+
+    def test_absolute_path(self, tmp_dir):
+        open(os.path.join(tmp_dir, "abs_test.txt"), "w").close()
+        # absolute=True 时返回绝对路径
+        result_abs = file_tools_listdir(tmp_dir, recursive=1, absolute=True)
+        abs_path = os.path.join(tmp_dir, "abs_test.txt")
+        assert abs_path in result_abs
+        # absolute=False（默认）时只返回文件名
+        result_rel = file_tools_listdir(tmp_dir, recursive=1, absolute=False)
+        assert "abs_test.txt" in result_rel
+        assert abs_path not in result_rel
+
+    def test_invalid_sort_by(self, tmp_dir):
+        result = file_tools_listdir(tmp_dir, sort_by="invalid")
+        assert "失败" in result
+        assert "不合法" in result
+
+    def test_invalid_start(self, tmp_dir):
+        result = file_tools_listdir(tmp_dir, start=0)
+        assert "失败" in result
+
+    def test_invalid_count(self, tmp_dir):
+        result = file_tools_listdir(tmp_dir, count=0)
+        assert "失败" in result
+        result = file_tools_listdir(tmp_dir, count=501)
+        assert "失败" in result
+
+    def test_pagination(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i:03d}.txt" for i in range(20)])
+        # count=5, start=1 → 第1~5个
+        result = file_tools_listdir(tmp_dir, count=5)
+        lines = result.strip().split("\n")
+        assert len(lines) == 7  # 5文件名 + 1空行 + 1页脚
+        assert "f000.txt" in result
+        assert "f004.txt" in result
+        assert "f005.txt" not in result
+        assert "后面还有 15 个文件" in result
+        # start=3 → 第3~7个（f002 ~ f006）
+        result2 = file_tools_listdir(tmp_dir, start=3, count=5)
+        assert "f002.txt" in result2
+        assert "f006.txt" in result2
+        assert "f001.txt" not in result2
+        assert "后面还有 13 个文件" in result2
+
+    def test_pagination_out_of_range(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(3)])
+        result = file_tools_listdir(tmp_dir, start=10)
+        assert "没有更多文件" in result
+        assert "共 3 个" in result
+
+    def test_sort_ascending_descending(self, tmp_dir):
+        _make_files(tmp_dir, ["c.txt", "a.txt", "b.txt"])
+        asc = file_tools_listdir(tmp_dir, ascending=True)
+        desc = file_tools_listdir(tmp_dir, ascending=False)
+        assert asc.strip().split("\n") == ["a.txt", "b.txt", "c.txt"]
+        assert desc.strip().split("\n") == ["c.txt", "b.txt", "a.txt"]
+
+    def test_sort_by_type(self, tmp_dir):
+        os.makedirs(os.path.join(tmp_dir, "zzz_dir"))
+        open(os.path.join(tmp_dir, "aaa_file.txt"), "w").close()
+        result = file_tools_listdir(tmp_dir, sort_by="type", ascending=True)
+        lines = result.strip().split("\n")
+        # "文件" < "文件夹"（字典序前缀关系）
+        assert lines[0] == "aaa_file.txt"
+        assert lines[1] == "zzz_dir"
+        # descending
+        result2 = file_tools_listdir(tmp_dir, sort_by="type", ascending=False)
+        lines2 = result2.strip().split("\n")
+        assert lines2[0] == "zzz_dir"
+        assert lines2[1] == "aaa_file.txt"
+
+    def test_sort_by_size(self, tmp_dir):
+        open(os.path.join(tmp_dir, "small.txt"), "w").close()
+        with open(os.path.join(tmp_dir, "large.txt"), "w") as f:
+            f.write("x" * 1000)
+        asc = file_tools_listdir(tmp_dir, sort_by="size", ascending=True)
+        desc = file_tools_listdir(tmp_dir, sort_by="size", ascending=False)
+        lines_asc = asc.strip().split("\n")
+        lines_desc = desc.strip().split("\n")
+        assert lines_asc[0] == "small.txt"
+        assert lines_asc[1] == "large.txt"
+        assert lines_desc[0] == "large.txt"
+        assert lines_desc[1] == "small.txt"
+
+    def test_sort_by_extension(self, tmp_dir):
+        open(os.path.join(tmp_dir, "a.py"), "w").close()
+        open(os.path.join(tmp_dir, "b.txt"), "w").close()
+        open(os.path.join(tmp_dir, "c.md"), "w").close()
+        result = file_tools_listdir(tmp_dir, sort_by="extension", ascending=True)
+        lines = result.strip().split("\n")
+        assert lines[0] == "c.md"
+        assert lines[1] == "a.py"
+        assert lines[2] == "b.txt"
+
+    def test_sort_by_modified_at(self, tmp_dir):
+        open(os.path.join(tmp_dir, "old.txt"), "w").close()
+        # 确保 old.txt 的修改时间早于 new.txt
+        old_ts = os.path.getmtime(os.path.join(tmp_dir, "old.txt"))
+        open(os.path.join(tmp_dir, "new.txt"), "w").close()
+        # 强制设置 new.txt 的时间比 old.txt 晚 1 秒
+        os.utime(os.path.join(tmp_dir, "new.txt"), (old_ts + 2, old_ts + 2))
+        asc = file_tools_listdir(tmp_dir, sort_by="modified_at", ascending=True)
+        desc = file_tools_listdir(tmp_dir, sort_by="modified_at", ascending=False)
+        lines_asc = asc.strip().split("\n")
+        lines_desc = desc.strip().split("\n")
+        assert lines_asc[0] == "old.txt"
+        assert lines_asc[1] == "new.txt"
+        assert lines_desc[0] == "new.txt"
+        assert lines_desc[1] == "old.txt"
+
+    def test_pagination_last_page(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i:03d}.txt" for i in range(7)])
+        result = file_tools_listdir(tmp_dir, start=6, count=5)
+        assert "f005.txt" in result
+        assert "f006.txt" in result
+        assert "f004.txt" not in result
+        # 最后一页无剩余，不显示尾部提示
+        assert "后面还有" not in result
+
+    def test_pagination_with_columns(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i:03d}.txt" for i in range(20)])
+        result = file_tools_listdir(tmp_dir, columns=["size"], count=5)
+        lines = result.strip().split("\n")
+        assert lines[0].startswith("| name")
+        assert lines[1].startswith("|---")
+        assert "f000.txt" in lines[2]
+        assert "f004.txt" in result
+        assert "f005.txt" not in result
+        assert "后面还有 15 个文件" in result
+
+    def test_pagination_single_file(self, tmp_dir):
+        open(os.path.join(tmp_dir, "only.txt"), "w").close()
+        result = file_tools_listdir(tmp_dir, start=1, count=1)
+        assert result.strip() == "only.txt"
 
 
 class TestInfo:
@@ -102,8 +253,8 @@ class TestInfo:
 
     def test_nonexistent(self):
         result = file_tools_info("/nonexistent_xyz_789")
-        data = json.loads(result)
-        assert data["exists"] is False
+        assert "失败" in result
+        assert "不存在" in result
 
     def test_fields(self, tmp_file):
         result = file_tools_info(tmp_file)

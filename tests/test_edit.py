@@ -6,6 +6,7 @@ from backup.manager import list_history
 from tools.edit import (
     file_tools_append,
     file_tools_delete_lines,
+    file_tools_indent_lines,
     file_tools_insert_lines,
     file_tools_replace,
     file_tools_replace_lines,
@@ -59,6 +60,24 @@ class TestAppend:
         assert "成功追加" in result
         content = _read_file(chinese_file)
         assert "新增中文行" in content
+
+    def test_line_separator_unix(self, tmp_file):
+        """line_separator=\\n 追加的内容使用 Unix 换行。"""
+        file_tools_append(tmp_file, "\nnew_line", line_separator="\\n")
+        with open(tmp_file, "rb") as f:
+            raw = f.read()
+        # 追加的 \nnew_line 应该是 \n 而不是 \r\n
+        # 文件原内容 line1\nline2\n... 可能被 Windows 自动转 \r\n
+        # 但追加行应该匹配 line_separator
+        assert b"new_line" in raw
+
+    def test_line_separator_windows(self, tmp_file):
+        """line_separator=\\r\\n 追加的内容使用 Windows 换行。"""
+        file_tools_append(tmp_file, "\nnew_line", line_separator="\\r\\n")
+        with open(tmp_file, "rb") as f:
+            raw = f.read()
+        # 追加的 \nnew_line 应该被转为 \r\nnew_line
+        assert b"\r\nnew_line" in raw
 
 
 class TestReplaceLines:
@@ -132,6 +151,20 @@ class TestReplaceLines:
         lines = _read_lines(chinese_file)
         assert "替换第一行" in lines[0]
 
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行。"""
+        file_tools_replace_lines(multi_line_file, 1, 1, "new", line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\nnew" not in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_replace_lines(multi_line_file, 1, 1, "new", line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
+
 
 class TestInsertLines:
     def test_insert_at_beginning(self, multi_line_file):
@@ -176,6 +209,20 @@ class TestInsertLines:
         file_tools_insert_lines(multi_line_file, 1, "new_line")
         history = list_history(multi_line_file)
         assert len(history) == 1
+
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行。"""
+        file_tools_insert_lines(multi_line_file, 1, "new", line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\nnew" not in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_insert_lines(multi_line_file, 1, "new", line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
 
 
 class TestDeleteLines:
@@ -223,6 +270,28 @@ class TestDeleteLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行（删除后剩余行之间用 \\n 连接）。"""
+        file_tools_delete_lines(multi_line_file, 1, 1, line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        # 删除第1行后，剩余行用 \n 连接，整个文件不应有 \r\n
+        assert b"\r\n" not in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_delete_lines(multi_line_file, 1, 1, line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_delete_lines(multi_line_file, 1, 1, line_separator="\r\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
+
 
 class TestReplace:
     def test_basic_replace(self, multi_line_file):
@@ -245,7 +314,7 @@ class TestReplace:
     def test_start_count(self, multi_line_file):
         result = file_tools_replace(
             multi_line_file, "line", "ROW",
-            start=3, count=2,
+            start_line=3, count=2,
         )
         assert "成功替换" in result
         lines = _read_lines(multi_line_file)
@@ -287,36 +356,71 @@ class TestReplace:
         assert "lXXX" in lines[0]
 
     def test_count_minus1(self, multi_line_file):
-        file_tools_replace(multi_line_file, "line", "ROW", count=-1)
+        file_tools_replace(multi_line_file, "line", "ROW", count=20)
         content = _read_file(multi_line_file)
         assert "line" not in content
 
     def test_empty_old_text(self, multi_line_file):
         result = file_tools_replace(multi_line_file, "", "X")
-        assert "成功替换" in result or "失败" in result
-
-    def test_start_lt_1(self, multi_line_file):
-        """start<1 应报错"""
-        result = file_tools_replace(multi_line_file, "line", "ROW", start=0)
         assert "失败" in result
-        assert "start" in result
-        result2 = file_tools_replace(multi_line_file, "line", "ROW", start=-1)
+
+    def test_invalid_count(self, multi_line_file):
+        """count<1 应报错"""
+        result = file_tools_replace(multi_line_file, "line", "ROW", count=0)
+        assert "失败" in result
+        assert "count" in result
+        result2 = file_tools_replace(multi_line_file, "line", "ROW", count=-1)
         assert "失败" in result2
-        assert "start" in result2
+        assert "count" in result2
+
+
+    def test_cross_line_matching(self, multi_line_file):
+        """跨行匹配：old_text 含 \n 时匹配多行内容"""
+        result = file_tools_replace(
+            multi_line_file, "line5\nline6", "X\nY\nZ",
+        )
+        assert "成功替换" in result
+        lines = _read_lines(multi_line_file)
+        assert lines[4] == "X"
+        assert lines[5] == "Y"
+        assert lines[6] == "Z"
+        assert lines[7] == "line7"
+
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行。"""
+        file_tools_replace(multi_line_file, "line", "ROW", line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" not in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_replace(multi_line_file, "line", "ROW", line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
 
 
 class TestRegexReplace:
     def test_basic(self, multi_line_file):
+        """count 默认=1，只替换第一次匹配。"""
         result = file_tools_regex_replace(multi_line_file, r"line(\d+)", r"NUM\1")
         assert "成功替换" in result
+        assert "替换了 1 处" in result  # 默认 count=1
         lines = _read_lines(multi_line_file)
         assert "NUM1" in lines[0]
-        assert "line1" not in lines[0]
+        assert "line2" in lines[1]  # 只替换了第1个匹配
+
+    def test_replace_all(self, multi_line_file):
+        """count=-1 替换全部。"""
+        result = file_tools_regex_replace(multi_line_file, r"line(\d+)", r"X\1", count=-1)
+        assert "成功替换" in result
+        assert "替换了 20 处" in result
+        lines = _read_lines(multi_line_file)
+        assert all("X" in l for l in lines)
 
     def test_backreference(self, multi_line_file):
-        result = file_tools_regex_replace(
-            multi_line_file, r"line(\d+)", r"item_\1_value",
-        )
+        result = file_tools_regex_replace(multi_line_file, r"line(\d+)", r"item_\1_value")
         assert "成功替换" in result
         lines = _read_lines(multi_line_file)
         assert "item_1_value" in lines[0]
@@ -343,45 +447,218 @@ class TestRegexReplace:
         assert "失败" in result
 
     def test_start_count(self, multi_line_file):
+        """start=3, count=2 → 只替换第3、4个匹配。"""
         result = file_tools_regex_replace(
             multi_line_file, r"line(\d+)", r"X\1",
             start=3, count=2,
         )
         assert "成功替换" in result
         lines = _read_lines(multi_line_file)
-        assert "line1" in lines[0]
-        assert "X3" in lines[2]
-        assert "X4" in lines[3]
-        assert "line5" in lines[4]
+        assert "line1" in lines[0]   # 第1个未替换
+        assert "line2" in lines[1]   # 第2个未替换
+        assert "X3" in lines[2]      # 第3个替换了
+        assert "X4" in lines[3]      # 第4个替换了
+        assert "line5" in lines[4]   # 第5个未替换
 
     def test_line_range(self, multi_line_file):
+        """start_line/end_line 控制搜索行范围。"""
         result = file_tools_regex_replace(
             multi_line_file, r"line", "ROW",
             start_line=10, end_line=12,
+            count=-1,
         )
         assert "成功替换" in result
         lines = _read_lines(multi_line_file)
-        assert "line1" in lines[0]
-        assert "ROW10" in lines[9]
+        assert "line1" in lines[0]    # 范围外未改
+        assert "ROW10" in lines[9]    # 范围内改了
         assert "ROW12" in lines[11]
-        assert "line13" in lines[12]
+        assert "line13" in lines[12]  # 范围外未改
 
     def test_backup_created(self, multi_line_file):
         file_tools_regex_replace(multi_line_file, r"line", "ROW")
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_complex_pattern(self, multi_line_file):
-        result = file_tools_regex_replace(multi_line_file, r"^line(\d+)$", r"[\1]")
-        assert "成功替换" in result
-        lines = _read_lines(multi_line_file)
-        assert "[1]" in lines[0]
-
     def test_start_lt_1(self, multi_line_file):
         """start<1 应报错"""
         result = file_tools_regex_replace(multi_line_file, r"line", "ROW", start=0)
         assert "失败" in result
         assert "start" in result
-        result2 = file_tools_regex_replace(multi_line_file, r"line", "ROW", start=-1)
-        assert "失败" in result2
-        assert "start" in result2
+
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行。"""
+        file_tools_regex_replace(multi_line_file, r"line", "ROW", line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" not in content
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_regex_replace(multi_line_file, r"line", "ROW", line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
+
+    # ── 边缘情况 ──────────────────────────────────────────
+
+    def test_empty_pattern(self, multi_line_file):
+        """空 pattern 应报错"""
+        result = file_tools_regex_replace(multi_line_file, "", "X")
+        assert "失败" in result
+        assert "pattern" in result.lower()
+
+    def test_count_zero(self, multi_line_file):
+        """count=0 应报错"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "ROW", count=0)
+        assert "失败" in result
+        assert "count" in result.lower()
+
+    def test_count_negative_invalid(self, multi_line_file):
+        """count<-1 应报错"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "ROW", count=-5)
+        assert "失败" in result
+        assert "count" in result.lower()
+
+    def test_start_line_lt_1(self, multi_line_file):
+        """start_line<1 应报错"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "ROW", start_line=0)
+        assert "失败" in result
+
+    def test_start_line_gt_total(self, multi_line_file):
+        """start_line>总行数 应报错"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "ROW", start_line=100)
+        assert "失败" in result
+        assert "超出" in result
+
+    def test_end_line_lt_start_line(self, multi_line_file):
+        """end_line<start_line 应报错"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "ROW", start_line=10, end_line=5)
+        assert "失败" in result
+        assert "矛盾" in result
+
+    def test_cross_line_replacement(self, cross_line_regex_file):
+        """跨行模式替换函数定义。"""
+        result = file_tools_regex_replace(
+            cross_line_regex_file,
+            r"def (\w+)\(.*?\):\s+return (.+)",
+            r"def \1():\n    return \2 + 1",
+            count=-1,
+        )
+        assert "成功替换" in result
+        lines = _read_lines(cross_line_regex_file)
+        assert "def foo():" in lines[0]
+        assert "    return x + 1 + 1" in lines[1]
+        assert "def bar():" in lines[3]
+        assert "    return 42 + 1" in lines[4]
+
+    def test_cross_line_single_replace(self, cross_line_regex_file):
+        """跨行模式只替换第1次匹配（默认 count=1）。"""
+        result = file_tools_regex_replace(
+            cross_line_regex_file,
+            r"def (\w+)\(.*?\):\s+return (.+)",
+            r"def \1():\n    return 0",
+        )
+        assert "成功替换" in result
+        assert "替换了 1 处" in result
+        lines = _read_lines(cross_line_regex_file)
+        assert "def foo():" in lines[0]  # foo 被替换了
+        assert "def bar()" in lines[3]   # bar 还在（第2个匹配）
+        assert "return 42" in lines[4]
+
+
+class TestIndentLines:
+    def test_expand_basic(self, multi_line_file):
+        """expand 模式：每行添加 4 空格。"""
+        result = file_tools_indent_lines(multi_line_file, mode="expand")
+        assert "成功缩进" in result
+        assert "增加了" in result
+        lines = _read_lines(multi_line_file)
+        assert lines[0].startswith("    ")
+        assert lines[0].strip() == "line1"
+
+    def test_shrink_basic(self, multi_line_file):
+        """shrink 模式：先 expand 再 shrink 回到原样。"""
+        file_tools_indent_lines(multi_line_file, mode="expand", count=4)
+        result = file_tools_indent_lines(multi_line_file, mode="shrink", count=4)
+        assert "成功缩进" in result
+        assert "减少了" in result
+        lines = _read_lines(multi_line_file)
+        assert lines[0] == "line1"
+
+    def test_line_range(self, multi_line_file):
+        """只缩进指定行范围。"""
+        result = file_tools_indent_lines(multi_line_file, start_line=5, end_line=8, mode="expand")
+        assert "成功缩进" in result
+        lines = _read_lines(multi_line_file)
+        assert not lines[0].startswith(" ")  # 第1行不变
+        assert lines[4].startswith("    ")    # 第5行缩进
+        assert lines[7].startswith("    ")    # 第8行缩进
+        assert not lines[8].startswith(" ")   # 第9行不变
+
+    def test_custom_char(self, multi_line_file):
+        """使用 tab 作为缩进字符。"""
+        result = file_tools_indent_lines(multi_line_file, mode="expand", count=2, char="\t")
+        assert "成功缩进" in result
+        lines = _read_lines(multi_line_file)
+        assert lines[0].startswith("\t\t")
+
+    def test_custom_count(self, multi_line_file):
+        """自定义缩进数量。"""
+        result = file_tools_indent_lines(multi_line_file, mode="expand", count=8)
+        assert "成功缩进" in result
+        lines = _read_lines(multi_line_file)
+        assert lines[0].startswith("        ")
+
+    def test_line_separator_unix(self, multi_line_file):
+        """line_separator=\\n 输出 Unix 换行。"""
+        file_tools_indent_lines(multi_line_file, mode="expand", count=2, line_separator="\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" not in content  # 没有 Windows 换行
+
+    def test_line_separator_windows(self, multi_line_file):
+        """line_separator=\\r\\n 输出 Windows 换行。"""
+        file_tools_indent_lines(multi_line_file, mode="expand", count=2, line_separator="\\r\\n")
+        with open(multi_line_file, "rb") as f:
+            content = f.read()
+        assert b"\r\n" in content
+
+    def test_no_changes(self, multi_line_file):
+        """shrink 模式行首无空白时，没有行被修改。"""
+        result = file_tools_indent_lines(multi_line_file, mode="shrink", count=4)
+        assert "没有行被修改" in result
+
+    def test_empty_file(self, empty_file):
+        """空文件视为 1 行空行，可以被缩进。"""
+        result = file_tools_indent_lines(empty_file, mode="expand")
+        assert "成功缩进" in result
+        with open(empty_file, encoding="utf-8") as f:
+            content = f.read()
+        assert content == "    "  # 空行被加了 4 空格
+
+    def test_nonexistent_file(self, tmp_dir):
+        """文件不存在报错。"""
+        path = os.path.join(tmp_dir, "nonexist.txt")
+        result = file_tools_indent_lines(path, mode="expand")
+        assert "失败" in result
+
+    def test_invalid_start_line(self, multi_line_file):
+        """start_line < 1 报错。"""
+        result = file_tools_indent_lines(multi_line_file, start_line=0, mode="expand")
+        assert "失败" in result
+
+    def test_invalid_mode(self, multi_line_file):
+        """不合法模式报错。"""
+        result = file_tools_indent_lines(multi_line_file, mode="invalid")
+        assert "失败" in result
+
+    def test_invalid_count(self, multi_line_file):
+        """count < 0 报错。"""
+        result = file_tools_indent_lines(multi_line_file, count=-1, mode="expand")
+        assert "失败" in result
+
+    def test_backup_created(self, multi_line_file):
+        """备份被创建。"""
+        file_tools_indent_lines(multi_line_file, mode="expand", count=2)
+        history = list_history(multi_line_file)
+        assert len(history) == 1

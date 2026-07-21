@@ -1,0 +1,1029 @@
+{
+  "file_tools_listdir": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_listdir",
+      "description": "列出目录内容。支持递归遍历、自定义属性列、排序和分页。无 columns 时返回纯文本列表（一行一文件），有 columns 时返回 Markdown 表格。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "recursive": {
+            "default": 1,
+            "description": "递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。",
+            "type": "integer"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（文件/文件夹/链接）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。"
+          },
+          "absolute": {
+            "default": false,
+            "description": "路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。",
+            "type": "boolean"
+          },
+          "start": {
+            "default": 1,
+            "description": "起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。",
+            "type": "integer"
+          },
+          "count": {
+            "default": 500,
+            "description": "最多返回的文件数，默认 500。范围 1~500，超出时报错。",
+            "type": "integer"
+          },
+          "sort_by": {
+            "default": "name",
+            "description": "排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。",
+            "type": "string"
+          },
+          "ascending": {
+            "default": true,
+            "description": "排序方向。True=升序排列（默认），False=降序排列。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_info": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_info",
+      "description": "查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回提示信息。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时返回提示，请检查路径拼写。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_guess": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_guess",
+      "description": "猜测文件类型和编码，返回 JSON 格式。依赖 puremagic 库根据文件魔数（magic number）检测类型，辅以 chardet 检测文本编码。目录直接返回 type 为 directory。puremagic 或 chardet 未安装时降级处理。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。如果是目录直接返回 type=directory，不执行魔数检测。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_diff": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_diff",
+      "description": "对比两个文件的差异，返回 unified diff 格式。支持 hunk 分页，可指定从第几个差异块开始显示。文件相同时返回「文件相同，没有差异。」",
+      "parameters": {
+        "properties": {
+          "path_a": {
+            "description": "旧文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "path_b": {
+            "description": "新文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "start": {
+            "default": 1,
+            "description": "起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。",
+            "type": "integer"
+          },
+          "count": {
+            "default": 10,
+            "description": "最多显示多少个差异块，默认 10。",
+            "type": "integer"
+          },
+          "max_chars": {
+            "default": 2048,
+            "description": "返回内容总字符上限，默认 2048。超过时自动截断。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path_a",
+          "path_b"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_history": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_history",
+      "description": "查看文件的历史备份版本列表，返回 JSON 格式。包含每个历史版本的编号（history_number）和创建时间。文件没有历史版本时返回空列表。历史版本由修改类工具（append、replace_lines 等）在修改前自动创建。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时返回对应的错误信息。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_read_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_read_lines",
+      "description": "按行读取文本文件，返回纯文本格式。支持指定起始行和读取行数，超过 max_chars 时自动截断并提示从哪行继续读取。空文件视为 0 行。show_line_number=True 时每行格式为 `行号 > 内容`，False 时直接输出原文。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "description": "起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。",
+            "type": "integer"
+          },
+          "line_count": {
+            "default": 20,
+            "description": "读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。",
+            "type": "integer"
+          },
+          "max_chars": {
+            "default": 2048,
+            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认，使用 chardet），也可指定 utf-8、gbk 等 Python 支持的编码名称。",
+            "type": "string"
+          },
+          "show_line_number": {
+            "default": true,
+            "description": "行号显示模式。True=每行带行号前缀（默认），False=直接输出原文。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_read_block": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_read_block",
+      "description": "从文本文件中读取一个矩形区域，返回纯文本格式。像一个可以上下左右移动的「观察窗口」——指定起止行列范围，只返回该矩形内的文本切片。超过 max_chars 时自动截断。空文件、行列参数反转等边界情况均有对应提示。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "start_row": {
+            "description": "起始行号，1-based，包含。必须 >= 1。超出文件总行数时报错。",
+            "type": "integer"
+          },
+          "end_row": {
+            "description": "结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。",
+            "type": "integer"
+          },
+          "start_col": {
+            "default": 1,
+            "description": "行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。",
+            "type": "integer"
+          },
+          "end_col": {
+            "default": 2048,
+            "description": "行内结束列号，1-based，包含。默认 2048。必须 >= start_col。",
+            "type": "integer"
+          },
+          "max_chars": {
+            "default": 2048,
+            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "show_line_number": {
+            "default": true,
+            "description": "行号显示模式。True=每行带行号前缀（默认），False=直接输出原文切片。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "start_row",
+          "end_row"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_regex": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_regex",
+      "description": "在文件内容中搜索正则表达式，支持跨行匹配，返回 JSON 格式。拼接指定行范围后整体用 finditer 匹配，因此正则可以跨行。matched 字段自动根据捕获组数量决定：0 组=完整匹配串，1 组=提取内容，2+组=列表。超过 250 字符的匹配内容会被截断并附带 note 字段提示。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "正则表达式，Python re 语法。支持跨行匹配（拼接行范围后整体用 finditer 匹配）。不能为空。",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+          },
+          "start": {
+            "default": 1,
+            "description": "从第几个匹配开始显示，1-based。默认 1。最小值为 1。",
+            "type": "integer"
+          },
+          "count": {
+            "default": 10,
+            "description": "最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "pattern"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_append": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_append",
+      "description": "追加内容到文件末尾。修改前自动备份。不会自动在文件末尾补换行符——如果文件末尾没有换行符，新增内容会直接接到最后一行后面。返回时显示文件末尾 3 行作为预览。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错（请先用 QwenPaw 的 write_file 创建文件）。",
+            "type": "string"
+          },
+          "content": {
+            "description": "要追加的文本内容。\\r\\n 和 \\r 写入前自动统一为 \\n，避免文本模式二次转换导致 \\r\\r\\n。追加前不会自动补换行符——如需换行需在 content 开头加 \\n。",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），\\n=Unix 风格（强制 LF），\\r\\n=Windows 风格（强制 CRLF）。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_replace_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_replace_lines",
+      "description": "整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示「─── 替换前/替换后 ───」对称预览，正文区超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "start_line": {
+            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。",
+            "type": "integer"
+          },
+          "content": {
+            "description": "替换内容。用 \\n 拆成多行，因此可以增加或减少行数。\\r\\n/\\r 写入前自动统一为 \\n。",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line",
+          "content"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_insert_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_insert_lines",
+      "description": "在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示「─── 插入前/后 ───」预览，前后各一行上下文，插入行超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "line": {
+            "description": "插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。",
+            "type": "integer"
+          },
+          "content": {
+            "description": "要插入的文本内容。用 \\n 拆成多行，因此可以一次插入多行。\\r\\n/\\r 写入前自动统一为 \\n。",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "content"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_delete_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_delete_lines",
+      "description": "删除文件中指定行区间的文本。修改前自动备份。返回时显示「─── 删除前/后 ───」对比，被删除的行标记（被删除）。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "start_line": {
+            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_replace": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_replace",
+      "description": "精确子串查找替换（str.replace），支持跨行匹配。修改前自动备份。old_text 和 new_text 均不做转义处理——传入真实换行符即可跨行匹配。提供 dry_run 模式预览替换结果而不实际修改。返回时附带 unified diff 格式的差异预览。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "old_text": {
+            "description": "要查找的文本，精确字串匹配。不做正则转义，传入真实换行符 \\n 即可跨行匹配。不能为空。",
+            "type": "string"
+          },
+          "new_text": {
+            "description": "替换成的文本。不做转义处理，与 old_text 的匹配方式一致。",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+          },
+          "count": {
+            "default": 1,
+            "description": "替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "description": "预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。",
+            "type": "boolean"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "old_text",
+          "new_text"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_regex_replace": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_regex_replace",
+      "description": "正则替换文件内容（re.finditer + 从后往前替换），支持跨行匹配。修改前自动备份。从后往前逐个替换，避免偏移漂移。支持 \\1、\\g<name> 等反向引用。提供 dry_run 模式预览。返回时附带 unified diff 格式的差异预览。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "正则表达式，Python re 语法。拼接行范围后整体匹配，支持跨行匹配。不能为空字符串。",
+            "type": "string"
+          },
+          "replacement": {
+            "description": "替换字符串，支持 \\1、\\g<name> 等反向引用。Python re.sub 的 expand 语义。",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+          },
+          "start": {
+            "default": 1,
+            "description": "从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。",
+            "type": "integer"
+          },
+          "count": {
+            "default": 1,
+            "description": "替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。",
+            "type": "integer"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "description": "预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。",
+            "type": "boolean"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "pattern",
+          "replacement"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_indent_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_indent_lines",
+      "description": "调整文件中指定行范围的行首缩进，支持增加（expand）和减少（shrink）两种模式。修改前自动备份。shrink 模式最多删除到行首非空白字符为止，不会删除非空白内容。返回时显示 +/- diff 格式预览（只显示有变化的行）。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "description": "起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
+            "type": "integer"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+          },
+          "mode": {
+            "default": "expand",
+            "description": "缩进模式。expand=增加缩进（默认），shrink=减少缩进。shrink 时最多删除到行首第一个非空白字符。",
+            "type": "string"
+          },
+          "count": {
+            "default": 4,
+            "description": "添加或删除的空白字符数量。默认 4。必须 >= 0。",
+            "type": "integer"
+          },
+          "char": {
+            "default": " ",
+            "description": "填充字符。默认空格（' '），也可传 '\\t' 使用制表符。仅 expand 模式使用。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          },
+          "encoding": {
+            "default": "auto",
+            "description": "文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_copy": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_copy",
+      "description": "复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。目标已存在时需设置 overwrite=True 才能覆盖。",
+      "parameters": {
+        "properties": {
+          "src": {
+            "description": "源路径。相对路径相对于 workspace 目录，支持 ~ 展开。可以是文件或目录，源不存在时报错。",
+            "type": "string"
+          },
+          "dst": {
+            "description": "目标路径。相对路径相对于 workspace 目录，支持 ~ 展开。目标已存在且 overwrite=False 时报错。",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": false,
+            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标（目录会先 rmtree 再 copytree）。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "src",
+          "dst"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_move": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_move",
+      "description": "移动或重命名文件或目录。目标已存在时需设置 overwrite=True 才能覆盖。覆盖目录时会先递归删除目标目录再移动。常用于文件/文件夹重命名（src 和 dst 在同一目录下）。",
+      "parameters": {
+        "properties": {
+          "src": {
+            "description": "源路径。相对路径相对于 workspace 目录，支持 ~ 展开。源不存在时报错。",
+            "type": "string"
+          },
+          "dst": {
+            "description": "目标路径。相对路径相对于 workspace 目录，支持 ~ 展开。目标已存在且 overwrite=False 时报错。",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": false,
+            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标（目录会先 rmtree 再移动）。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "src",
+          "dst"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_trash": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_trash",
+      "description": "将文件或目录安全删除到回收站（而非永久删除）。依赖 pytrash 库。删除后可通 file_tools_trash_undo 恢复。回收站内的文件保留原始路径信息，恢复时可以按原路径精确找回。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "要删除的文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时报错。pytrash 未安装时提示安装。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_trash_undo": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_trash_undo",
+      "description": "从回收站恢复文件到原始位置。依赖 pytrash 库。按原路径精确匹配回收站条目，如果发现多条记录（如多次删除同路径文件），取最近删除的那个恢复。恢复后文件回到原始路径。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "原文件路径（删除前的路径）。相对路径相对于 workspace 目录，支持 ~ 展开。回收站中找不到匹配时返回提示。pytrash 未安装时提示安装。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_mkdir": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_mkdir",
+      "description": "创建目录，支持多级目录自动创建（类似 mkdir -p）。目录已存在时返回提示而非报错，可以安全重复调用。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "要创建的目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。支持多级目录（如 a/b/c 会递归创建）。目录已存在时返回提示。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_undo": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_undo",
+      "description": "将文件恢复到指定历史版本。从 _file_tools/history 备份目录中读取备份覆盖写回。不触发新的备份（即恢复操作本身不会产生新的历史版本）。恢复前建议先用 file_tools_history 查看可用版本列表。history_number=1 为最旧版本，数字越大越新。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在或该文件没有历史版本时返回提示。",
+            "type": "string"
+          },
+          "history_number": {
+            "description": "历史版本号。1=最旧版本，数字越大版本越新。建议先用 file_tools_history 查看可用的版本列表。超出范围时报错提示。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "history_number"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_write": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_write",
+      "description": "写入文件内容，替代默认的 write_file。文件已存在时自动备份并覆盖（备份失败不阻塞写入），文件不存在时直接创建新文件。使用原子写入——先写 .temp_file 再 shutil.move 替换，避免写入中断导致文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回字符数和行数统计。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "要写入的文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件已存在时自动备份，不存在时直接创建。",
+            "type": "string"
+          },
+          "content": {
+            "description": "要写入的文本内容。\\r\\n 和 \\r 写入前自动统一为 \\n，避免文本模式二次转换。",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "utf-8",
+            "description": "文件编码，默认 utf-8。支持 utf-8、gbk 等 Python open() 支持的编码。",
+            "type": "string"
+          },
+          "line_separator": {
+            "default": "auto",
+            "description": "行结束符控制。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_read_bytes": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_read_bytes",
+      "description": "读取二进制文件的指定字节范围，返回全大写 hex 字符串。支持指定起始偏移量和读取长度，可自定义每行显示的字节数。一次最多读取 4096 字节——超过时请分多次读取，用 offset 逐步推进。返回时附带实际读取字节数和文件总大小等信息。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。",
+            "type": "integer"
+          },
+          "length": {
+            "default": 512,
+            "description": "读取长度（字节），默认 512。上限 4096，超过时报错提示分多次读取。不能为负数。",
+            "type": "integer"
+          },
+          "group_size": {
+            "default": 16,
+            "description": "每行显示的字节数。-1=不分组（hex 连成一行），0=报错，>0=每行显示指定字节数（默认 16）。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_write_bytes": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_write_bytes",
+      "description": "写入二进制文件内容，支持全量覆盖和部分覆盖两种模式。全量覆盖（offset=-1）时自动备份并原子写入，部分覆盖（offset>=0）时从指定偏移量开始覆写、不改变文件大小、不触发备份。所有输入为 hex 字符串（全大写输出）。备份后的文件可通过 file_tools_undo 恢复。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。部分覆盖时文件必须先存在。",
+            "type": "string"
+          },
+          "content": {
+            "description": "要写入的字节数据（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。去掉空格后长度必须是 2 的倍数（每个字节 2 个 hex 字符）。",
+            "type": "string"
+          },
+          "offset": {
+            "default": -1,
+            "description": "写入模式。-1=全量覆盖（默认，先备份再原子写入），>=0=部分覆盖（从该偏移量开始覆写，不备份不改变文件大小）。",
+            "type": "integer"
+          },
+          "skip_backup": {
+            "default": false,
+            "description": "是否跳过备份。仅全量覆盖（offset=-1）时有效。大文件可设为 true 提高速度。默认 false。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_find_bytes": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_find_bytes",
+      "description": "在二进制文件中精确查找字节序列，返回 CSV 格式的匹配偏移量列表（十进制）。精确匹配，不支持通配符或模糊匹配。未匹配到时返回提示信息。返回结果包含 offset 列，每行一个十进制偏移量。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。去掉空格后长度必须是 2 的倍数。不能为空。",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。",
+            "type": "integer"
+          },
+          "count": {
+            "default": -1,
+            "description": "最多返回几个匹配。-1=全部返回（默认），>0=限制返回数量。传 0 报错。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "pattern"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "file_tools_replace_bytes": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_replace_bytes",
+      "description": "在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量）。",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "old_bytes": {
+            "description": "要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。不能为空。",
+            "type": "string"
+          },
+          "new_bytes": {
+            "description": "替换成的字节序列（hex 字符串）。可以与 old_bytes 长度不同——替换后文件大小会变。",
+            "type": "string"
+          },
+          "count": {
+            "default": 1,
+            "description": "替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。",
+            "type": "integer"
+          },
+          "skip_backup": {
+            "default": false,
+            "description": "是否跳过备份。大文件可设为 true 提高写入速度。默认 false。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "old_bytes",
+          "new_bytes"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

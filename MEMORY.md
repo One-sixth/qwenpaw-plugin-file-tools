@@ -222,16 +222,228 @@ def replace_lines(path: str, start_line: int):
 "path": { "type": "string", "description": "文件路径" }
 ```
 
-### 与 `api.register_tool()` 的 description 关系
+### 关键澄清：`_extract_input_schema` 只返回 parameters
+
+```python
+# _extract_input_schema 的返回值：
+{'type': 'object', 'properties': {...}, 'required': [...]}
+# ↑ 只有 parameters，没有 description
+```
+
+**不包含总体描述（description）。** 总体描述是在调用方拼接的：
+
+| 场景 | 总体描述来源 | 拼接方式 |
+|------|-------------|---------|
+| `show_tool_schema.py` 离线预览 | `fn.__doc__` 第一段 | `doc.strip().split('\n\n')[0]` |
+| QwenPaw 运行时 | `api.register_tool(description=...)` | 内部自动合并，覆盖 docstring |
+| 函数 docstring 官方惯例 | 第一段 = short description | 后续段落 = long description，`Args:` = 参数说明 |
+
+### 另一个澄清：函数 docstring 的 short description 在运行时被覆盖
 
 | 信息源 | 位置 | 用途 |
 |--------|------|------|
-| 函数 docstring (short+long) | 工具的 `description` 字段 | tools 整体说明 |
-| 函数 docstring (Args:) | 参数 `properties[].description` | 每个参数的说明 |
-| `api.register_tool(description=...)` | 工具的 `description` 字段 | **覆盖** 函数 docstring 作为工具说明 |
+| 函数 docstring (Args:) | 参数 `properties[].description` | ✅ 每个参数的说明，`_extract_input_schema` 提取 |
+| 函数 docstring (short+long) | 工具的 `description` 字段 | ❌ 被 `api.register_tool(description=...)` 覆盖 |
+| `api.register_tool(description=...)` | 工具的 `description` 字段 | ✅ 最终发给 LLM 的总体描述 |
+
+**结论：**
+- 修改参数说明 → 改 `tools/*.py` 的 `Args:` docstring
+- 修改工具总体描述 → 改 `plugin.py` 的 `api.register_tool(description=...)`
+- 函数 docstring 的总体描述段在运行时**不起作用**
 
 ### 经验
 
 - 给 `tools/*.py` 中的工具函数补上 `Args:` docstring，就能让每个参数的 schema 自带 description
 - 不需要用 `Annotated` 或手动维护 `parameters` JSON Schema
 - 这条路径不通的检查点：`docstring_parser` 是否安装、函数是否有 `__doc__`
+
+## 2026-07-21 改动汇总
+
+### 1. 修复 `file_tools_read_lines` 截断提示行号 bug
+- **问题**：`next_line = start_line + len(rows)` 算成了被截断行的下一行
+- **修复**：`next_line = int(rows[-1]["line_number"])`，取被截断行本身的行号
+- **测试**：新增 `test_max_chars_truncated_from_start`、`test_max_chars_truncated_from_middle`、`test_max_chars_no_truncation`
+
+### 2. `file_tools_read_block` 改动
+- **截断提示**：新增"从第 N 行继续读取"提示，与 `read_lines` 一致
+- **空文件提示**：返回 `读取矩形块失败，因为文件为空（长度为 0）。`
+- **参数重命名**：`start_line/end_line` → `start_row/end_row`，`start_char/end_char` → `start_col/end_col`
+- **语义统一**：全部改为 1-based 包含，与 `start_line` 一致
+
+### 3. `format_csv` 移除 `max_chars` 参数
+- **原因**：工具函数已自行截断，`format_csv` 只需格式化，不应再截断
+- **影响**：`read.py` 中 3 处调用去掉 `max_chars` 参数
+
+### 4. 参数语义说明完善
+- **path 参数**：全部工具统一标注 `相对路径相对于 workspace 目录，支持 ~ 展开。`
+- **encoding 参数**：`read.py` 3 处补充 `auto=自动检测`
+- **子 agent 扫描**：派生子 agent 扫描全部工具，确认无遗漏的语义模糊问题
+
+### 5. 修改工具输出格式统一
+- **系统信息前置**：成功信息 + 备份信息合并到第一行
+- **预览内容后置**：diff 格式 / `─── 替换前/后 ───` 格式放在下面
+- **涉及工具**：`append`、`replace_lines`、`insert_lines`、`delete_lines`、`replace`、`regex_replace`
+- **新增 diff 预览**：`replace` 和 `regex_replace` 新增 `-/+` 格式的逐行 diff
+
+### 6. `file_tools_insert_lines` 预览
+- 显示 `─── 插入前/后 ───` 格式，前后各一行上下文
+- 插入行过多时（> 6）只显示前 2 + 后 2 行，中间 `<<省略>>`
+
+### 7. `file_tools_indent_lines` 新工具
+- **功能**：调整行首缩进，支持 expand（增加）和 shrink（减少）两种模式
+- **参数**：`start_line/end_line`、`mode`、`count`、`char`（填充字符）、`line_separator`、`encoding`
+- **line_separator 实现**：内部统一用 `\n` 连接，通过 `open(newline=...)` 控制输出，Python 自动处理转换
+- **备份**：使用现有 `backup_file` 机制
+- **输出**：diff 格式预览，系统信息前置
+- **测试**：14 个测试覆盖全部功能
+
+### 8. 测试环境修复
+- **问题**：测试环境无 QwenPaw 配置，`get_session_dir()` 抛 `RuntimeError`
+- **修复**：`conftest.py` 中 `autouse` fixture 直接覆盖各模块的 `get_session_dir` 引用（值绑定陷阱）
+- **涉及模块**：`utils`、`backup.manager`、`tools.edit`、`tools.info`、`tools.history`
+## 2026-07-21 改动汇总（第二轮）
+
+### 1. `file_tools_read_lines` 纯文本格式改造
+- 新增 `show_line_number: bool = True` 参数
+- 输出从 CSV 改为纯文本格式
+  - `show_line_number=True`：`行号 > 内容`
+  - `show_line_number=False`：直接输出原文
+- 行号不需要右对齐（泰斗先生要求简化）
+- 新增 4 个 `show_line_number=False` 测试
+
+### 2. `file_tools_read_block` 纯文本格式改造
+- 新增 `show_line_number: bool = True` 参数
+- 输出从 CSV 改为纯文本格式，与 `read_lines` 统一
+- 新增 `test_show_line_number_false` 测试
+
+### 3. `file_tools_regex` 纯文本格式改造（双行模式）
+- 输出从 CSV 改为纯文本双行模式：
+  ```
+  行号 > 行内容
+     matched: 匹配文本
+  ```
+- 移除 `max_chars` 参数（函数体内未使用）
+- 新增三种截断关键词：
+  - `<<行内容截断>>` — 行内容超过 160 字符
+  - `<<匹配文本截断>>` — 匹配文本超过 160 字符
+  - `<<结果截断>>` — 匹配数量超过 count 限制
+- 不支持跨行匹配（逐行 `re.search()`）
+- `pattern` 参数 description 加上「不支持跨行匹配」说明（写入 schema）
+
+### 4. `show_tool_schema.py` 重构
+- 发现 `_extract_input_schema` 只返回 parameters，不包含 description
+- description 在 QwenPaw 运行时由 `api.register_tool(description=...)` 提供，覆盖函数 docstring
+- `show_tool_schema.py` 改用 `_extract_description()` 函数，取 docstring 第一段作为离线预览 description
+- 文档记录到 MEMORY.md「工具 Schema 生成机制」章节
+
+### 5. 其他优化
+- `file_tools_listdir` 的 `recursive` 参数描述优化：补充「递归深度控制」和「>10000文件时截断」
+- `tools_schema.json` 重新生成
+- 全部 270 个测试通过
+
+## 2026-07-21 改动汇总（第三轮）
+
+### 1. 补齐 6 个修改工具的 `line_separator` 参数
+- `file_tools_append`、`replace_lines`、`insert_lines`、`delete_lines`、`replace`、`regex_replace` 新增 `line_separator` 参数
+- `_write_file()` 新增 `newline` 参数（`Optional[str]`，透传 `open(newline=...)`）
+- 统一实现模式：
+  ```python
+  newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
+  nl = newline_map.get(line_separator, None)
+  ```
+- 每个工具新增 2 个测试（unix/windows），共 12 个新测试
+- 全部 282 个测试通过
+
+### 2. `line_separator` 参数字符串字面量统一（重要踩坑）
+- **问题**：`Literal["\\n"]` 中的 `"\\n"` 是 **2 个字符**（反斜杠 + n），不是换行符
+- `indent_lines` 的 `newline_map` 之前用的 key 是 `"\n"`（1 个换行符），与 `Literal` 不一致
+- `newline_map.get("\n")` 不匹配 `Literal["\\n"]` 传来的 `"\\n"`，返回 `None`，`open(newline=None)` 在 Windows 上默认转 `\r\n`，测试假通过
+- **修复**：统一 `newline_map` 的 key 为 `"\\n"`（2 字符），测试统一传 `"\\n"`（2 字符）和 `"\\r\\n"`（4 字符）
+- **关键教训**：Literal 中的 `"\\n"` 是 2 字符，`newline_map` 的 key 和测试传值必须一致
+
+### 3. `plugin.py` description 同步更新
+- 6 个工具的 description 加上 `line_separator` 参数说明
+
+## 2026-07-21 改动汇总（第四轮）
+
+### 1. `file_tools_listdir` 纯文本/Markdown 表格改造
+- **输出格式**：无 columns → 纯文本列表（一行一文件），有 columns → Markdown 表格（`|` 分隔，无对齐）
+- **新增参数**：`absolute: bool = False`，控制返回绝对路径还是相对路径
+    - `absolute=False`（默认）→ 相对路径（recursive 时 `dir_a/sub_file1.txt`）
+    - `absolute=True` → 绝对路径（`D:/project/dir_a/sub_file1.txt`）
+- **空目录**：返回 `（空目录，无文件）`
+- **超限截断**：末尾追加 `结果过多，仅返回前 10000 条。`
+- 旧 CSV 格式中的 `format_csv` 调用移除，改用纯文本拼接
+- 测试：`test_markdown_table_format`、`test_absolute_path`、`test_sort_order` 更新
+- 全部 283 个测试通过
+
+### 2. `plan.md` 清空
+- 所有待办已完成，plan.md 清空为仅含「已完成」标题
+
+## 2026-07-22 改动汇总
+
+### `file_tools_listdir` 新增分页+排序功能
+- **新增参数**：`start(int, 默认1)` + `count(int, 默认500, 最大500)` + `sort_by(str, 默认"name")` + `ascending(bool, 默认True)`
+- **排序**：扫描后统一按 sort_by+ascending 排序，支持 name/size/permissions/type/modified_at/created_at/extension
+- **分页**：超出范围时返回「没有更多文件」提示；尾部信息格式「当前列出的文件 N~M，后面还有 X 个文件」
+- **性能保护**：保留 10000 文件上限，超出时提示可通过分页浏览前 10000 条
+- **空行分隔**：尾部提示前加空行，视觉更清晰
+- **测试**：新增 6 个测试（sort_by_size/extension/modified_at、pagination_last_page/with_columns/single_file），全量 318 测试通过
+
+### 1. `file_tools_regex` 跨行匹配 + JSON 输出 + 捕获组提取
+
+#### 核心变化
+- **匹配方式**：逐行 `search` → 拼接后整体 `finditer`（跨行匹配）
+- **返回格式**：纯文本双行模式 → JSON（`indent=2`）
+- **捕获组提取**：
+  - 无捕获组 → `matched` 为完整匹配串（str）
+  - 单捕获组 → `matched` 为提取内容（str）
+  - 多捕获组 → `matched` 为列表（list[str]）
+- **行号**：跨行匹配显示 `"1~2"`，单行显示 `"3"`
+- **移除顶层 `path` 字段**（函数参数已有）
+
+#### 参数校验（新增 7 项）
+- `count=0` → 报错
+- `count<-1` → 报错（仅 -1 合法）
+- `pattern=""` → 报错
+- `start_line<1` → 报错
+- `start_line>total_lines` → 报错提示行数范围
+- `end_line<start_line` → 报错参数矛盾
+- `end_line<1` → 报错
+
+#### matched 截断 + note 提示
+- 超过 250 字符截断，附加 `<<truncated>>`
+- 出现截断时 JSON 顶层加 `note` 字段，提示用 read_lines/read_block 获取完整内容
+
+#### 行号计算
+- 构建 `line_offsets` 索引，用 `bisect.bisect_right` 将 `match.start()` 映射到原始行号
+- `_pos_to_line()` 内部函数
+
+### 2. `file_tools_regex_replace` 跨行匹配 + count 默认值 1
+
+#### 核心变化
+- **匹配方式**：逐行 `sub` → 拼接后整体 `finditer` + 从后往前替换
+- **count 默认值**：`-1`（全部替换）→ `1`（只替换第 1 个匹配）
+- **diff 预览**：手动逐行 diff → `difflib.unified_diff(n=1)`
+
+#### 参数校验（新增 7 项）
+与 `regex` 一致：`pattern=""`、`count=0`、`count<-1`、`start_line<1`、`start_line>total`、`end_line<start_line`、`end_line<1`
+
+#### 从后往前替换
+```python
+for m in reversed(effective_matches):
+    range_content = range_content[:m.start()] + m.expand(replacement) + range_content[m.end():]
+```
+避免偏移漂移。
+
+#### start 超出总数
+改前返回「剩余匹配数不足」，改后报错「超出匹配总数（共 N 个匹配）」。
+
+### 3. `plugin.py` description 精简
+全部 26 个工具的 `description` 改为简短中文描述（1 句话），去掉详细参数列表和示例。
+因为这些 description 在 UI 上展示给用户，Agent 看到的工具参数说明来自函数 docstring 的 `Args:` 段落。
+
+### 4. 全量测试
+- `test_read.py`：55 个测试（新增 8 个边缘测试）
+- `test_edit.py`：89 个测试（TestRegexReplace 重写为 21 个测试）
+- 全量 305 测试全部通过

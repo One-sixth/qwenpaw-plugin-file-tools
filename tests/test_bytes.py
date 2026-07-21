@@ -306,7 +306,7 @@ class TestFindBytes:
 
 class TestReplaceBytes:
     def test_replace_single(self, tmp_dir):
-        """替换单个匹配。"""
+        """替换单个匹配（默认 count=1）。"""
         path = os.path.join(tmp_dir, "test.bin")
         _bin_file(path, b"\x01\x02\x03\x04\x05")
         result = file_tools_replace_bytes(path, old_bytes="01 02", new_bytes="FF FF")
@@ -314,16 +314,17 @@ class TestReplaceBytes:
         assert "1 处" in result
         assert _read_bin(path) == b"\xff\xff\x03\x04\x05"
 
-    def test_replace_multiple(self, bin_file_with_pattern):
-        """替换多个匹配。"""
+    def test_replace_multiple_default(self, bin_file_with_pattern):
+        """默认 count=1 只替换第一个匹配。"""
         result = file_tools_replace_bytes(
             bin_file_with_pattern, old_bytes="00 01 02", new_bytes="FF FF"
         )
         assert "替换成功" in result
-        assert "10 处" in result
+        assert "1 处" in result
         data = _read_bin(bin_file_with_pattern)
-        # 所有 00 01 02 都被替换为 FF FF（长度变短）
-        assert data == b"\xff\xff" * 10
+        # 默认只替换第 1 个（3→2 字节），后面 9 个保留
+        assert data[:2] == b"\xff\xff"
+        assert data[2:11] == b"\x00\x01\x02\x00\x01\x02\x00\x01\x02"
 
     def test_replace_with_count(self, bin_file_with_pattern):
         """限制替换次数。"""
@@ -345,26 +346,31 @@ class TestReplaceBytes:
         assert "未找到" in result
 
     def test_replace_with_offset(self, bin_file_with_pattern):
-        """从偏移量开始替换。"""
+        """从偏移量开始替换，默认 count=1 只替换第一个。"""
         result = file_tools_replace_bytes(
             bin_file_with_pattern, old_bytes="00 01 02", new_bytes="FF", offset=5
         )
         # 从偏移量 5 开始搜索，匹配在 6, 9, 12, ... 共 8 处
+        # 默认 count=1 只替换第一个（偏移量 6）
         assert "替换成功" in result
+        assert "1 处" in result
         data = _read_bin(bin_file_with_pattern)
-        # 文件开头 00 01 02 在偏移量 0 和 3，由于搜索从 5 开始，它们没被替换
+        # 偏移量 0 和 3 的匹配在搜索范围外，所以保留
         assert data[0:3] == b"\x00\x01\x02"
+        # 偏移量 6 的匹配被替换（3→1 字节），确认第一处被替换
+        assert data[6] == 0xFF
 
     def test_replace_different_length(self, tmp_dir):
-        """替换不同长度（变长和变短）。"""
+        """替换不同长度（变长和变短），默认 count=1 只替换第一个。"""
         path = os.path.join(tmp_dir, "test.bin")
         _bin_file(path, b"\x00\x01\x02\x00\x01\x02\x00\x01\x02")
 
-        # 变短：3 字节 → 1 字节
+        # 变短：3 字节 → 1 字节，默认只替换第一个
         result = file_tools_replace_bytes(path, old_bytes="00 01 02", new_bytes="FF")
         assert "替换成功" in result
-        assert "3 处" in result
-        assert _read_bin(path) == b"\xff\xff\xff"
+        assert "1 处" in result
+        # 第一个被替换（3→1），后面两个保留
+        assert _read_bin(path) == b"\xff\x00\x01\x02\x00\x01\x02"
 
     def test_replace_backup(self, tmp_dir):
         """替换时自动备份。"""
@@ -406,12 +412,14 @@ class TestReplaceBytes:
         assert "失败" in result
 
     def test_replace_positions_in_output(self, tmp_dir):
-        """返回消息中包含替换位置（十进制）。"""
+        """返回消息中包含替换位置（十进制），默认 count=1 只替换第一个。"""
         path = os.path.join(tmp_dir, "test.bin")
         _bin_file(path, b"\x00\x01\x02\x00\x01\x02")
         result = file_tools_replace_bytes(
             path, old_bytes="00 01 02", new_bytes="FF"
         )
+        assert "替换成功" in result
+        assert "1 处" in result
         assert "替换位置" in result
-        assert "0" in result  # 偏移量 0
-        assert "3" in result  # 偏移量 3
+        assert "0" in result  # 偏移量 0（第一个匹配）
+        assert "3" not in result  # 默认只替换第一个，偏移量 3 不在结果中

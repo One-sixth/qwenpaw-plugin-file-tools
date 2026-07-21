@@ -74,6 +74,25 @@ def multi_line_file(tmp_dir: str) -> Generator[str, None, None]:
 
 
 @pytest.fixture
+def cross_line_regex_file(tmp_dir: str) -> Generator[str, None, None]:
+    """跨行正则匹配测试文件。"""
+    path = os.path.join(tmp_dir, "cross_line.py")
+    content = "def foo(x):\n    return x + 1\n\ndef bar():\n    return 42\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    yield path
+
+
+@pytest.fixture
+def long_matched_file(tmp_dir: str) -> Generator[str, None, None]:
+    """超长匹配内容测试文件（一行 300 个 x）。"""
+    path = os.path.join(tmp_dir, "long_matched.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("x" * 300 + "\n")
+    yield path
+
+
+@pytest.fixture
 def empty_file(tmp_dir: str) -> Generator[str, None, None]:
     path = os.path.join(tmp_dir, "empty.txt")
     open(path, "w").close()
@@ -139,4 +158,23 @@ def many_medium_lines_file(tmp_dir: str) -> Generator[str, None, None]:
     lines = [f"第{i}行 - 这是一段测试文本，用来测试截断提示行号功能。" for i in range(1, 31)]
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+    yield path
+
+
+@pytest.fixture
+def cross_line_regex_file(tmp_dir: str) -> Generator[str, None, None]:
+    """跨行正则匹配测试文件。"""
+    path = os.path.join(tmp_dir, "cross_line.py")
+    content = "def foo(x):\n    return x + 1\n\ndef bar():\n    return 42\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    yield path
+
+
+@pytest.fixture
+def long_matched_file(tmp_dir: str) -> Generator[str, None, None]:
+    """超长匹配内容测试文件（一行 300 个 x）。"""
+    path = os.path.join(tmp_dir, "long_matched.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("x" * 300 + "\n")
     yield path

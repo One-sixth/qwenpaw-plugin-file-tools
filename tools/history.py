@@ -26,17 +26,11 @@ def file_tools_undo(
     path: str,
     history_number: int,
 ) -> str:
-    """恢复文件到历史版本。
-
-    从 `_file_tools/history/{编码目录}/{history_number}` 读回备份覆盖写回。
-    不触发新的备份。
+    """将文件恢复到指定历史版本。从 _file_tools/history 备份目录中读取备份覆盖写回。不触发新的备份（即恢复操作本身不会产生新的历史版本）。恢复前建议先用 file_tools_history 查看可用版本列表。history_number=1 为最旧版本，数字越大越新。
 
     Args:
-        path: 文件路径
-        history_number: 历史版本号（1=最旧，数字越大越新）
-
-    Returns:
-        纯文本结果
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在或该文件没有历史版本时返回提示。
+        history_number: 历史版本号。1=最旧版本，数字越大版本越新。建议先用 file_tools_history 查看可用的版本列表。超出范围时报错提示。
     """
     resolved = resolve_path(path)
 

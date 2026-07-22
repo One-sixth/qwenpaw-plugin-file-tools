@@ -301,12 +301,12 @@ def file_tools_replace_bytes(
     offset: int = 0,
     skip_backup: bool = False,
 ) -> str:
-    """在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量）。
+    """在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量），CSV 格式。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
         old_bytes: 要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。不能为空。
-        new_bytes: 替换成的字节序列（hex 字符串）。可以与 old_bytes 长度不同——替换后文件大小会变。
+        new_bytes: 替换成的字节序列（hex 字符串）。空字符串表示删除匹配内容。可以与 old_bytes 长度不同——替换后文件大小会变。
         count: 替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。
         offset: 搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。
         skip_backup: 是否跳过备份。大文件可设为 true 提高写入速度。默认 false。
@@ -389,7 +389,8 @@ def file_tools_replace_bytes(
         return format_error("替换", f"写入文件时出错：{e}")
 
     # 构建返回消息
-    positions_str = "、".join(str(p) for p in reversed(replaced_positions))
+    positions = [{"offset": pos} for pos in reversed(replaced_positions)]
+    positions_str = format_csv(positions, fieldnames=["offset"])
     msg = f"替换成功：替换了 {replace_count} 处。\n替换位置（十进制）：\n{positions_str}"
 
     if history_number is not None:

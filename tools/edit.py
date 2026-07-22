@@ -48,13 +48,16 @@ logger = logging.getLogger(__name__)
 
 
 def _write_file(path: str, content: str, encoding: str, newline: Optional[str] = None) -> None:
-    """文本模式写入文件。
+    """文本模式写入文件（原子写入）。
 
+    先写 .temp_file 再 os.replace 替换，避免写入中断导致文件损坏。
     newline 参数与 open() 的 newline 参数语义一致：
     None=Python自动处理，\\n=LF，\\r\\n=CRLF。
     """
-    with open(path, "w", encoding=encoding, newline=newline) as f:
+    tmp_path = path + ".temp_file"
+    with open(tmp_path, "w", encoding=encoding, newline=newline) as f:
         f.write(content)
+    os.replace(tmp_path, path)
 
 
 # ── 9. file_tools_append ──────────────────────────────────
@@ -258,7 +261,7 @@ def file_tools_insert_lines(
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示「─── 插入前/后 ───」预览，前后各一行上下文，插入行超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。
+    """在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示 +/- diff 格式预览（前一行上下文 + 新插入行 + 后一行上下文），不带被挤开的旧行。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
@@ -706,6 +709,10 @@ def file_tools_indent_lines(
         return format_error("缩进调整", f"文件「{resolved}」不存在")
     if start_line < 1:
         return format_error("缩进调整", f"起始行号 {start_line} 不合法")
+    if end_line is not None and end_line < 1:
+        return format_error("缩进调整", f"结束行号 {end_line} 不合法，最小值为 1")
+    if end_line is not None and end_line < start_line:
+        return format_error("缩进调整", f"结束行号 {end_line} 小于起始行号 {start_line}")
     if mode not in ("expand", "shrink"):
         return format_error("缩进调整", f"模式 {mode} 不合法，仅支持 expand 和 shrink")
     if count < 0:
@@ -754,8 +761,7 @@ def file_tools_indent_lines(
 
     try:
         content = "\n".join(lines)
-        with open(resolved, "w", encoding=resolved_encoding, newline=nl) as f:
-            f.write(content)
+        _write_file(resolved, content, resolved_encoding, newline=nl)
     except Exception as e:
         return format_error("缩进调整", f"写入文件时出错：{e}")
 

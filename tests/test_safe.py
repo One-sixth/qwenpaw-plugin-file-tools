@@ -68,6 +68,12 @@ class TestCopy:
         assert os.path.isfile(dst)
         assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
 
+    def test_copy_src_eq_dst(self, tmp_file):
+        """src==dst 时应返回提示而非崩溃"""
+        result = file_tools_copy(tmp_file, tmp_file)
+        assert "相同" in result
+        assert "无需操作" in result
+
 
 class TestMove:
     def test_move_file(self, tmp_file, tmp_dir):
@@ -111,6 +117,23 @@ class TestMove:
         assert os.path.isfile(dst)
         assert not os.path.isfile(src)
 
+    def test_move_src_eq_dst(self, tmp_dir):
+        """src==dst 时应返回提示而非崩溃"""
+        src = os.path.join(tmp_dir, "same.txt")
+        with open(src, "w") as f:
+            f.write("test")
+        result = file_tools_move(src, src)
+        assert "相同" in result
+        assert "无需操作" in result
+
+    def test_move_to_nonexistent_dir(self, tmp_file, tmp_dir):
+        """移动到不存在的目录应自动创建（与 copy 行为一致）"""
+        dst = os.path.join(tmp_dir, "new_sub", "nested", "moved.txt")
+        result = file_tools_move(tmp_file, dst)
+        assert "已移动" in result
+        assert os.path.isfile(dst)
+        assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
+
 
 class TestMkdir:
     def test_create(self, tmp_dir):
@@ -131,7 +154,8 @@ class TestMkdir:
 
     def test_invalid_path(self):
         result = file_tools_mkdir("")
-        assert "失败" in result or "已创建" in result or "已存在" in result
+        assert "失败" in result
+        assert "不能为空" in result
 
 
 class TestTrash:

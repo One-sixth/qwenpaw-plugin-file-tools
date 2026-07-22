@@ -540,4 +540,66 @@ for m in reversed(effective_matches):
 
 ### 测试
 - 更新 `test_preview_format` 断言
-- 全量 318 测试全部通过
+- 全量 318 测试全部通过## 2026-07-22 改动：P1 逻辑缺陷修复
+
+### 背景
+审计报告（2026-07-22）中识别出 11 项 P1 问题，其中 #6（`replace.count=-1`）和 #7（`replace.start` 测试指南）已在之前修复/确认，实际修复 9 项。
+
+### 修复清单
+
+| 工具 | 问题 | 修复方式 |
+|:----:|------|---------|
+| `indent_lines` | 缺少 `end_line < 1` 校验 | 新增校验返回 `format_error` |
+| `indent_lines` | 缺少 `end_line < start_line` 校验 | 新增校验返回 `format_error` |
+| `diff` | `count < 1` 无校验 | 新增校验返回 `format_error` |
+| `diff` | `start > total_hunks` 无校验 | 新增校验返回 `format_error` |
+| `diff` | 双句号 bug（`format_error` 的 reason 末尾有 `。`，内部又加一个） | 去掉 `format_error` 调用中 reason 末尾的 `。` |
+| `copy` | `src==dst` 死循环 | 新增 `resolved_src == resolved_dst` 检测，返回提示 |
+| `move` | `src==dst` 死循环 | 同 copy |
+| `move` | 不自动创建目标目录 | 新增 `os.makedirs(dst_dir, exist_ok=True)`，与 copy 一致 |
+| `mkdir` | 空字符串 `""` 不报错（`resolve_path("")` 返回 workspace 目录） | 新增 `if not path: return format_error(...)` |
+
+### 测试
+- 新增 7 个测试用例
+- 全量 325 测试全部通过
+
+### 受影响文件
+- `tools/edit.py` — indent_lines 校验
+- `tools/info.py` — diff 校验 + 双句号修复
+- `tools/safe.py` — copy/move/mkdir 修复
+- `tests/test_edit.py` — 2 个新测试
+- `tests/test_info.py` — 3 个新测试
+- `tests/test_safe.py` — 4 个新测试/更新## 2026-07-22 改动：P2 语义清晰度修复
+
+### 修复清单（7 项代码修复）
+
+| # | 工具 | 问题 | 修复方式 |
+|:-:|:----:|------|---------|
+| 17 | `info` | docstring 说"返回 JSON"，路径不存在时返回纯文本 | 改用 `format_error` 三段式，docstring 同步更新 |
+| 18 | `info` | 非三段式错误格式 | 同上 |
+| 19 | `regex` | 错误信息混用 `format_error` 和旧式 `f"..."` | 3 处统一改为 `format_error` |
+| 23 | `copy` | 目录覆盖 docstring 语义不明确 | 改为"覆盖目录时替换整个目录而非合并内容，覆盖文件时直接覆盖" |
+| 24 | `move` | 目标目录不存在的错误提示不清晰 | 分离 `os.makedirs` 为独立 try-except，错误时明确提示"创建目标目录时出错" |
+| 25 | `replace_bytes` | 位置列表用顿号分隔 vs `find_bytes` 的 CSV | 统一为 `format_csv` 格式 |
+| 26 | `replace_bytes` | `new_bytes` 空值无校验 | 允许空串（删除匹配内容），docstring 说明 |
+
+### 已自然解决
+- #21 `indent_lines` docstring 与代码不一致 — P1 已加 `end_line` 校验
+- #22 `indent_lines` 测试指南无章节 — 文档类，P3 阶段处理
+- #20 `regex` 测试指南预期格式与实际不符 — 文档类，P3 阶段处理
+
+### 受影响文件
+- `tools/info.py` — info 错误格式
+- `tools/read.py` — regex 错误信息统一
+- `tools/safe.py` — copy docstring + move 错误提示
+- `tools/bytes.py` — replace_bytes 位置列表格式 + docstring
+- `tests/test_bytes.py` — 测试断言适配 CSV 格式
+
+### 补充修正（2026-07-22）
+- `regex` 文件不存在时，移除 `请使用 file_tools_info(...)` 建议提示，因为 `file_tools_info` 路径不存在时也只会返回错误，不适合作为"确认文件是否存在"的建议。
+- 清理 `file_tools_listdir`、`file_tools_read_lines`、`file_tools_read_block` 中 3 处 `请使用 file_tools_info(...)` 建议提示（同理，不适合作为确认文件存在的建议）
+
+### 补充修正：原子写入保护（2026-07-22）
+- 将 `_write_file` 从直接 `open(path, "w")` 改为原子写入：`.temp_file` + `os.replace`，覆盖 6 个编辑工具（replace_lines/insert_lines/delete_lines/replace/regex_replace/indent_lines）
+- `append` 排除（追加模式不适合原子写入）
+- 全量 325 测试通过，无 `.temp_file` 残留

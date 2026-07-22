@@ -83,7 +83,6 @@ def file_tools_listdir(
     if not os.path.isdir(resolved):
         return (
             f"列出目录失败，因为路径「{resolved}」不存在或不是一个目录。"
-            f"请使用 file_tools_info(path=\"{path}\") 确认路径是否正确。"
         )
 
     if start < 1:
@@ -231,16 +230,17 @@ def file_tools_listdir(
 def file_tools_info(
     path: str,
 ) -> str:
-    """查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回提示信息。
+    """查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回错误提示。
 
     Args:
         path: 文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时返回提示，请检查路径拼写。
     """
     resolved = resolve_path(path)
     if not os.path.exists(resolved):
-        return (
-            f"查看文件信息失败，因为路径「{resolved}」不存在。"
-            f"请使用 file_tools_listdir 确认文件是否存在，或检查路径拼写是否正确。"
+        return format_error(
+            "查看文件信息",
+            f"路径「{resolved}」不存在",
+            "请使用 file_tools_listdir 确认文件是否存在，或检查路径拼写是否正确。",
         )
 
     try:
@@ -367,7 +367,11 @@ def file_tools_diff(
     # 分页
     total_hunks = len(hunks)
     if start < 1:
-        return format_error("对比", f"start 参数值 {start} 不合法。start 表示「从第几个 hunk 开始显示」，最小值为 1。")
+        return format_error("对比", f"start 参数值 {start} 不合法。start 表示「从第几个 hunk 开始显示」，最小值为 1")
+    if count < 1:
+        return format_error("对比", f"count 参数值 {count} 不合法。count 表示「最多显示多少个差异块」，最小值为 1")
+    if start > total_hunks:
+        return format_error("对比", f"start 参数值 {start} 超出差异块总数（共 {total_hunks} 个）。start 取值范围 1~{total_hunks}")
     end_idx = min(start - 1 + count, total_hunks)
     selected = hunks[start - 1 : end_idx]
 

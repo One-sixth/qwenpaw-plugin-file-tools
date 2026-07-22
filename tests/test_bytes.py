@@ -421,9 +421,8 @@ class TestReplaceBytes:
         assert "替换成功" in result
         assert "1 处" in result
         assert "替换位置" in result
-        assert "0" in result  # 偏移量 0（第一个匹配）
-        # 检查偏移量段落中只有 0 没有 3（路径中可能含数字，需精确匹配替换位置段落）
+        # CSV 格式：offset 列 + 数据行
         pos_lines = result.split("替换位置（十进制）：")[1].split("\n")
-        pos_value = pos_lines[1]  # 第2行是偏移量值
+        pos_value = pos_lines[2]  # 第3行是偏移量数据（第1行空，第2行表头，第3行数据）
         assert "0" in pos_value
         assert "3" not in pos_value  # 默认只替换第一个，偏移量 3 不在结果中

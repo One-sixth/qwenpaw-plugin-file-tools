@@ -592,6 +592,18 @@ class TestIndentLines:
         assert lines[7].startswith("    ")    # 第8行缩进
         assert not lines[8].startswith(" ")   # 第9行不变
 
+    def test_end_line_lt_1(self, multi_line_file):
+        """end_line < 1 应报错。"""
+        result = file_tools_indent_lines(multi_line_file, end_line=0)
+        assert "失败" in result
+        assert "不合法" in result
+
+    def test_end_line_lt_start_line(self, multi_line_file):
+        """end_line < start_line 应报错。"""
+        result = file_tools_indent_lines(multi_line_file, start_line=5, end_line=3)
+        assert "失败" in result
+        assert "小于" in result
+
     def test_custom_char(self, multi_line_file):
         """使用 tab 作为缩进字符。"""
         result = file_tools_indent_lines(multi_line_file, mode="expand", count=2, char="\t")

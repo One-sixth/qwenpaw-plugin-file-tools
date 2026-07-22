@@ -347,6 +347,31 @@ class TestDiff:
         result = file_tools_diff(a, b, start=0)
         assert "失败" in result
         assert "start" in result
+        assert "。。" not in result  # 无双句号
+
+    def test_count_lt_1(self, tmp_dir):
+        """diff 的 count<1 应报错"""
+        a = os.path.join(tmp_dir, "a.txt")
+        b = os.path.join(tmp_dir, "b.txt")
+        with open(a, "w", encoding="utf-8") as f:
+            f.write("hello\nworld\n")
+        with open(b, "w", encoding="utf-8") as f:
+            f.write("hello\nuniverse\n")
+        result = file_tools_diff(a, b, count=0)
+        assert "失败" in result
+        assert "count" in result
+
+    def test_start_gt_total_hunks(self, tmp_dir):
+        """diff 的 start>total_hunks 应报错"""
+        a = os.path.join(tmp_dir, "a.txt")
+        b = os.path.join(tmp_dir, "b.txt")
+        with open(a, "w", encoding="utf-8") as f:
+            f.write("hello\nworld\n")
+        with open(b, "w", encoding="utf-8") as f:
+            f.write("hello\nuniverse\n")
+        result = file_tools_diff(a, b, start=999)
+        assert "失败" in result
+        assert "超出" in result
 
 
 class TestHistory:

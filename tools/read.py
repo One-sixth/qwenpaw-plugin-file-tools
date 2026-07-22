@@ -68,7 +68,6 @@ def file_tools_read_lines(
     if not os.path.isfile(resolved):
         return (
             f"按行读取失败，因为文件「{resolved}」不存在。"
-            f"请使用 file_tools_info(path=\"{path}\") 确认文件是否存在。"
         )
 
     try:
@@ -167,7 +166,6 @@ def file_tools_read_block(
     if not os.path.isfile(resolved):
         return (
             f"读取矩形块失败，因为文件「{resolved}」不存在。"
-            f"请使用 file_tools_info(path=\"{path}\") 确认文件是否存在。"
         )
 
     try:
@@ -254,9 +252,9 @@ def file_tools_regex(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return (
-            f"正则匹配失败，因为文件「{resolved}」不存在。"
-            f"请使用 file_tools_info(path=\"{path}\") 确认文件是否存在。"
+        return format_error(
+            "正则匹配",
+            f"文件「{resolved}」不存在",
         )
 
     if not pattern:
@@ -265,12 +263,12 @@ def file_tools_regex(
     try:
         compiled = re_module.compile(pattern)
     except re_module.error as e:
-        return f"正则匹配失败，因为正则表达式语法错误：{e}。"
+        return format_error("正则匹配", f"正则表达式语法错误：{e}")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return f"正则匹配失败，因为读取文件时出错：{e}。"
+        return format_error("正则匹配", f"读取文件时出错：{e}")
 
     # ── 参数校验 ──────────────────────────────────────────
 

@@ -169,14 +169,14 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_copy",
             tool_func=file_tools_copy,
-            description="复制文件或目录，目标目录不存在时自动创建。",
+            description="复制文件或目录，支持目录融合（源目录→已存在目标目录时合并内容）。目标目录不存在时自动创建。",
             icon="📋",
             enabled=True,
         )
         api.register_tool(
             tool_name="file_tools_move",
             tool_func=file_tools_move,
-            description="移动或重命名文件/目录。",
+            description="移动或重命名文件/目录，支持目录融合（源目录→已存在目标目录时合并内容）和文件放入目录。",
             icon="📦",
             enabled=True,
         )

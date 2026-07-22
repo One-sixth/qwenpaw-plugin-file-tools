@@ -29,12 +29,12 @@ def file_tools_copy(
     dst: str,
     overwrite: bool = False,
 ) -> str:
-    """复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。目标已存在时需设置 overwrite=True 才能覆盖——覆盖目录时，会先删除目标目录再重新复制（即替换整个目录，而非合并内容）；覆盖文件时直接覆盖。
+    """复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。源目录→目标目录（已存在）时执行融合：将源目录下所有内容复制到目标目录内。源文件→目标目录（已存在）时，将文件复制到目录内部。
 
     Args:
         src: 源路径。相对路径相对于 workspace 目录，支持 ~ 展开。可以是文件或目录，源不存在时报错。
         dst: 目标路径。相对路径相对于 workspace 目录，支持 ~ 展开。目标已存在且 overwrite=False 时报错。
-        overwrite: 覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——覆盖目录时替换整个目录而非合并内容，覆盖文件时直接覆盖。
+        overwrite: 覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——目录融合时同名文件/目录会被覆盖。
     """
     resolved_src = resolve_path(src)
     resolved_dst = resolve_path(dst)
@@ -48,6 +48,47 @@ def file_tools_copy(
     if resolved_src == resolved_dst:
         return f"源路径和目标路径相同（{resolved_src}），无需操作。"
 
+    # ── 目录→已存在目录：融合 ──
+    if os.path.isdir(resolved_src) and os.path.isdir(resolved_dst):
+        if not overwrite:
+            conflicts = []
+            for item in os.listdir(resolved_src):
+                if os.path.exists(os.path.join(resolved_dst, item)):
+                    conflicts.append(item)
+            if conflicts:
+                c_list = "、".join(conflicts)
+                return (
+                    f"复制失败，因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
+                    f"如果要覆盖，请设置 overwrite=True。"
+                )
+        for item in os.listdir(resolved_src):
+            src_item = os.path.join(resolved_src, item)
+            dst_item = os.path.join(resolved_dst, item)
+            if os.path.exists(dst_item):
+                if os.path.isdir(dst_item):
+                    shutil.rmtree(dst_item)
+                else:
+                    os.remove(dst_item)
+            if os.path.isdir(src_item):
+                shutil.copytree(src_item, dst_item)
+            else:
+                shutil.copy2(src_item, dst_item)
+        return f"已复制「{resolved_src}」→「{resolved_dst}」（融合）。"
+
+    # ── 文件→已存在目录：放入目录内 ──
+    if os.path.isfile(resolved_src) and os.path.isdir(resolved_dst):
+        dst_file = os.path.join(resolved_dst, os.path.basename(resolved_src))
+        if os.path.exists(dst_file) and not overwrite:
+            return (
+                f"复制失败，因为目标目录中已存在同名文件「{dst_file}」。"
+                f"如果要覆盖，请设置 overwrite=True。"
+            )
+        if os.path.exists(dst_file):
+            os.remove(dst_file)
+        shutil.copy2(resolved_src, dst_file)
+        return f"已复制「{resolved_src}」→「{dst_file}」。"
+
+    # ── 常规复制 ──
     if os.path.exists(resolved_dst) and not overwrite:
         return (
             f"复制失败，因为目标文件「{resolved_dst}」已存在。"
@@ -79,12 +120,12 @@ def file_tools_move(
     dst: str,
     overwrite: bool = False,
 ) -> str:
-    """移动或重命名文件或目录。目标已存在时需设置 overwrite=True 才能覆盖。覆盖目录时会先递归删除目标目录再移动。常用于文件/文件夹重命名（src 和 dst 在同一目录下）。
+    """移动或重命名文件或目录。目标已存在时需设置 overwrite=True 才能覆盖。源目录→目标目录（已存在）时执行融合：将源目录下所有内容移动到目标目录内，再删除源目录。常用于文件/文件夹重命名（src 和 dst 在同一目录下）。
 
     Args:
         src: 源路径。相对路径相对于 workspace 目录，支持 ~ 展开。源不存在时报错。
         dst: 目标路径。相对路径相对于 workspace 目录，支持 ~ 展开。目标已存在且 overwrite=False 时报错。
-        overwrite: 覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标（目录会先 rmtree 再移动）。
+        overwrite: 覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——目录融合时同名文件/目录会被覆盖。
     """
     resolved_src = resolve_path(src)
     resolved_dst = resolve_path(dst)
@@ -97,6 +138,48 @@ def file_tools_move(
     if resolved_src == resolved_dst:
         return f"源路径和目标路径相同（{resolved_src}），无需操作。"
 
+    # ── 目录融合模式 ──
+    if os.path.isdir(resolved_src) and os.path.isdir(resolved_dst):
+        # 检查是否有冲突
+        if not overwrite:
+            conflicts = []
+            for item in os.listdir(resolved_src):
+                dst_item = os.path.join(resolved_dst, item)
+                if os.path.exists(dst_item):
+                    conflicts.append(item)
+            if conflicts:
+                c_list = "、".join(conflicts)
+                return (
+                    f"移动失败，因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
+                    f"如果要覆盖，请设置 overwrite=True。"
+                )
+        # 逐个移动子条目
+        for item in os.listdir(resolved_src):
+            src_item = os.path.join(resolved_src, item)
+            dst_item = os.path.join(resolved_dst, item)
+            if os.path.exists(dst_item):
+                if os.path.isdir(dst_item):
+                    shutil.rmtree(dst_item)
+                else:
+                    os.remove(dst_item)
+            shutil.move(src_item, dst_item)
+        os.rmdir(resolved_src)
+        return f"已移动「{resolved_src}」→「{resolved_dst}」（融合）。"
+
+    # ── 文件→已存在目录：放入目录内 ──
+    if os.path.isfile(resolved_src) and os.path.isdir(resolved_dst):
+        dst_file = os.path.join(resolved_dst, os.path.basename(resolved_src))
+        if os.path.exists(dst_file) and not overwrite:
+            return (
+                f"移动失败，因为目标目录中已存在同名文件「{dst_file}」。"
+                f"如果要覆盖，请设置 overwrite=True。"
+            )
+        if os.path.exists(dst_file):
+            os.remove(dst_file)
+        shutil.move(resolved_src, dst_file)
+        return f"已移动「{resolved_src}」→「{dst_file}」。"
+
+    # ── 常规移动模式 ──
     if os.path.exists(resolved_dst) and not overwrite:
         return (
             f"移动失败，因为目标文件「{resolved_dst}」已存在。"

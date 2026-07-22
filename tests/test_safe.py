@@ -68,11 +68,74 @@ class TestCopy:
         assert os.path.isfile(dst)
         assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
 
+    def test_move_dir_merge(self, tmp_dir):
+        """目录→目录（已存在）应融合内容。"""
+        src_dir = os.path.join(tmp_dir, "src_dir")
+        dst_dir = os.path.join(tmp_dir, "dst_dir")
+        os.makedirs(src_dir)
+        os.makedirs(dst_dir)
+        # 源目录有 a.txt，目标目录有 b.txt
+        open(os.path.join(src_dir, "a.txt"), "w").close()
+        open(os.path.join(dst_dir, "b.txt"), "w").close()
+        result = file_tools_move(src_dir, dst_dir, overwrite=True)
+        assert "融合" in result
+        assert not os.path.isdir(src_dir)  # 源目录已被删除
+        assert os.path.isfile(os.path.join(dst_dir, "a.txt"))  # 融合过来了
+        assert os.path.isfile(os.path.join(dst_dir, "b.txt"))  # 原有的还在
+
+    def test_move_dir_merge_conflict(self, tmp_dir):
+        """目录融合时同名文件冲突应报错。"""
+        src_dir = os.path.join(tmp_dir, "src_dir")
+        dst_dir = os.path.join(tmp_dir, "dst_dir")
+        os.makedirs(src_dir)
+        os.makedirs(dst_dir)
+        open(os.path.join(src_dir, "same.txt"), "w").close()
+        open(os.path.join(dst_dir, "same.txt"), "w").close()
+        result = file_tools_move(src_dir, dst_dir, overwrite=False)
+        assert "失败" in result
+        assert "已存在" in result
+
     def test_copy_src_eq_dst(self, tmp_file):
         """src==dst 时应返回提示而非崩溃"""
         result = file_tools_copy(tmp_file, tmp_file)
         assert "相同" in result
         assert "无需操作" in result
+
+    def test_copy_dir_merge(self, tmp_dir):
+        """目录→已存在目录应融合内容。"""
+        src_dir = os.path.join(tmp_dir, "src_dir")
+        dst_dir = os.path.join(tmp_dir, "dst_dir")
+        os.makedirs(src_dir)
+        os.makedirs(dst_dir)
+        open(os.path.join(src_dir, "a.txt"), "w").close()
+        open(os.path.join(dst_dir, "b.txt"), "w").close()
+        result = file_tools_copy(src_dir, dst_dir, overwrite=True)
+        assert "融合" in result
+        assert os.path.isfile(os.path.join(dst_dir, "a.txt"))
+        assert os.path.isfile(os.path.join(dst_dir, "b.txt"))
+
+    def test_copy_file_to_dir(self, tmp_dir):
+        """文件→已存在目录应放入目录内。"""
+        src = os.path.join(tmp_dir, "src_file.txt")
+        with open(src, "w") as f:
+            f.write("test")
+        dst_dir = os.path.join(tmp_dir, "sub_dir")
+        os.makedirs(dst_dir)
+        result = file_tools_copy(src, dst_dir)
+        assert "已复制" in result
+        assert os.path.isfile(os.path.join(dst_dir, "src_file.txt"))
+
+    def test_move_file_to_dir(self, tmp_dir):
+        """文件→已存在目录应放入目录内。"""
+        src = os.path.join(tmp_dir, "src_file.txt")
+        with open(src, "w") as f:
+            f.write("test")
+        dst_dir = os.path.join(tmp_dir, "sub_dir")
+        os.makedirs(dst_dir)
+        result = file_tools_move(src, dst_dir)
+        assert "已移动" in result
+        assert os.path.isfile(os.path.join(dst_dir, "src_file.txt"))
+        assert not os.path.isfile(src)
 
 
 class TestMove:
@@ -133,6 +196,33 @@ class TestMove:
         assert "已移动" in result
         assert os.path.isfile(dst)
         assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
+
+    def test_move_dir_merge(self, tmp_dir):
+        """目录→目录（已存在）应融合内容。"""
+        src_dir = os.path.join(tmp_dir, "src_dir")
+        dst_dir = os.path.join(tmp_dir, "dst_dir")
+        os.makedirs(src_dir)
+        os.makedirs(dst_dir)
+        # 源目录有 a.txt，目标目录有 b.txt
+        open(os.path.join(src_dir, "a.txt"), "w").close()
+        open(os.path.join(dst_dir, "b.txt"), "w").close()
+        result = file_tools_move(src_dir, dst_dir, overwrite=True)
+        assert "融合" in result
+        assert not os.path.isdir(src_dir)  # 源目录已被删除
+        assert os.path.isfile(os.path.join(dst_dir, "a.txt"))  # 融合过来了
+        assert os.path.isfile(os.path.join(dst_dir, "b.txt"))  # 原有的还在
+
+    def test_move_dir_merge_conflict(self, tmp_dir):
+        """目录融合时同名文件冲突应报错。"""
+        src_dir = os.path.join(tmp_dir, "src_dir")
+        dst_dir = os.path.join(tmp_dir, "dst_dir")
+        os.makedirs(src_dir)
+        os.makedirs(dst_dir)
+        open(os.path.join(src_dir, "same.txt"), "w").close()
+        open(os.path.join(dst_dir, "same.txt"), "w").close()
+        result = file_tools_move(src_dir, dst_dir, overwrite=False)
+        assert "失败" in result
+        assert "已存在" in result
 
 
 class TestMkdir:

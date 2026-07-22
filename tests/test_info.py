@@ -164,14 +164,14 @@ class TestListdir:
         open(os.path.join(tmp_dir, "aaa_file.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, sort_by="type", ascending=True)
         lines = result.strip().split("\n")
-        # "文件" < "文件夹"（字典序前缀关系）
-        assert lines[0] == "aaa_file.txt"
-        assert lines[1] == "zzz_dir"
+        # "directory" < "file"（字典序）
+        assert lines[0] == "zzz_dir"
+        assert lines[1] == "aaa_file.txt"
         # descending
         result2 = file_tools_listdir(tmp_dir, sort_by="type", ascending=False)
         lines2 = result2.strip().split("\n")
-        assert lines2[0] == "zzz_dir"
-        assert lines2[1] == "aaa_file.txt"
+        assert lines2[0] == "aaa_file.txt"
+        assert lines2[1] == "zzz_dir"
 
     def test_sort_by_size(self, tmp_dir):
         open(os.path.join(tmp_dir, "small.txt"), "w").close()

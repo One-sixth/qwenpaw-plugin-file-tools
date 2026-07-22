@@ -28,7 +28,7 @@
               }
             ],
             "default": null,
-            "description": "额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（文件/文件夹/链接）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。"
+            "description": "额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。"
           },
           "absolute": {
             "default": false,
@@ -706,7 +706,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_copy",
-      "description": "复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。目标已存在时需设置 overwrite=True 才能覆盖——覆盖目录时，会先删除目标目录再重新复制（即替换整个目录，而非合并内容）；覆盖文件时直接覆盖。",
+      "description": "复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。源目录→目标目录（已存在）时执行融合：将源目录下所有内容复制到目标目录内。源文件→目标目录（已存在）时，将文件复制到目录内部。",
       "parameters": {
         "properties": {
           "src": {
@@ -719,7 +719,7 @@
           },
           "overwrite": {
             "default": false,
-            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——覆盖目录时替换整个目录而非合并内容，覆盖文件时直接覆盖。",
+            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——目录融合时同名文件/目录会被覆盖。",
             "type": "boolean"
           }
         },
@@ -735,7 +735,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_move",
-      "description": "移动或重命名文件或目录。目标已存在时需设置 overwrite=True 才能覆盖。覆盖目录时会先递归删除目标目录再移动。常用于文件/文件夹重命名（src 和 dst 在同一目录下）。",
+      "description": "移动或重命名文件或目录。目标已存在时需设置 overwrite=True 才能覆盖。源目录→目标目录（已存在）时执行融合：将源目录下所有内容移动到目标目录内，再删除源目录。常用于文件/文件夹重命名（src 和 dst 在同一目录下）。",
       "parameters": {
         "properties": {
           "src": {
@@ -748,7 +748,7 @@
           },
           "overwrite": {
             "default": false,
-            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标（目录会先 rmtree 再移动）。",
+            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——目录融合时同名文件/目录会被覆盖。",
             "type": "boolean"
           }
         },

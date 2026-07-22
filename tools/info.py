@@ -65,7 +65,7 @@ def file_tools_listdir(
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。
-        columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（文件/文件夹/链接）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
+        columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
         absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。
         start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。
         count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。
@@ -154,11 +154,11 @@ def file_tools_listdir(
                     row["permissions"] = stat.filemode(st.st_mode)
                 elif col == "type":
                     if os.path.isdir(full_path):
-                        row["type"] = "文件夹"
+                        row["type"] = "directory"
                     elif os.path.islink(full_path):
-                        row["type"] = "链接"
+                        row["type"] = "symlink"
                     else:
-                        row["type"] = "文件"
+                        row["type"] = "file"
                 elif col == "modified_at":
                     row["modified_at"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
                 elif col == "created_at":

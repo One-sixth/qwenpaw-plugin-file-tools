@@ -633,3 +633,15 @@ for m in reversed(effective_matches):
 | 2 | `read_block` | `start_col/end_col<1` 错误信息"偏移量"→"列号"，改用 `format_error` |
 | 3 | `write` | 新增 `line_separator` 运行时校验（`if not in ("auto","\\n","\\r\\n"): return format_error`）；修正 2 处测试中 `"\r\n"`→`"\\r\\n"` 写法不一致 |
 - 全量 354 测试通过
+
+### 补充修正：listdir type 列值改为英文（2026-07-22）
+- `"文件夹"`→`"directory"`，`"链接"`→`"symlink"`，`"文件"`→`"file"`
+- 同步更新 docstring 和测试断言
+
+### 补充修正：move 目录融合（2026-07-22）
+- 源目录→已存在目标目录时，改为融合而非删除替换：逐个移动子条目到目标目录，再删除源目录
+- 新增 2 个测试（融合 + 冲突），全量 358 测试通过### 补充修正：copy/move 融合+文件放入目录（2026-07-22）
+- copy 目录→已存在目录：改为融合（逐个复制子条目到目标目录），而非 rmtree 替换
+- copy/move 文件→已存在目录：文件放入目录内（`dst_dir/filename`），而非试图替换目录
+- 更新 `plugin.py` description 同步说明融合行为
+- 新增 3 个测试（copy 融合、copy 文件→目录、move 文件→目录），全量 361 测试通过

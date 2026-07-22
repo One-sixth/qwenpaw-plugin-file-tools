@@ -17,6 +17,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# 记录最后一次备份失败的原因（供工具函数输出具体错误信息）
+_last_backup_error: str | None = None
+
+
+def get_last_backup_error() -> str | None:
+    """获取最后一次备份失败的原因。"""
+    return _last_backup_error
+
 
 def _get_backup_root() -> str:
     """获取备份根目录。
@@ -67,13 +75,18 @@ def _update_files_json(backup_root: str, path: str, encoded: str) -> None:
 
 def backup_file(path: str) -> Optional[int]:
     """备份指定文件。"""
+    global _last_backup_error
+    _last_backup_error = None
+
     if not os.path.isfile(path):
+        _last_backup_error = f"文件不存在: {path}"
         logger.warning("尝试备份不存在的文件: %s", path)
         return None
 
     try:
         history_dir = _get_history_dir(path)
     except RuntimeError as e:
+        _last_backup_error = f"无法获取备份目录: {e}"
         logger.error("备份失败，无法获取备份目录: %s", e)
         return None
 
@@ -85,6 +98,7 @@ def backup_file(path: str) -> Optional[int]:
     try:
         shutil.copy2(path, dest)
     except Exception as e:
+        _last_backup_error = f"复制文件失败: {e}"
         logger.error("备份文件失败 %s → %s: %s", path, dest, e)
         return None
 

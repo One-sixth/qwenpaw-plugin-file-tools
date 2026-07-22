@@ -126,7 +126,7 @@ def file_tools_replace_lines(
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示「─── 替换前/替换后 ───」对称预览，正文区超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。
+    """整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示 +/- diff 格式预览（先 - 旧行再 + 新行，带行号）。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
@@ -175,10 +175,19 @@ def file_tools_replace_lines(
         return format_error("替换行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
-    preview = _build_replace_preview(old_lines, lines, start_line - 1, actual_end, actual_end - actual_start)
+
+    # 构建 +/- diff 预览
+    diff_parts = []
+    # - 组：旧内容（按旧行号）
+    for i in range(actual_start, actual_end):
+        diff_parts.append(f"- {i + 1} > {truncate_line(old_lines[i])}")
+    # + 组：新内容（按新行号，从 start_line 开始）
+    for i in range(actual_start, actual_start + len(new_lines_content)):
+        diff_parts.append(f"+ {i + 1} > {truncate_line(lines[i])}")
+    diff_text = "\n".join(diff_parts)
 
     summary = f"成功替换：已将第 {start_line}~{end_line} 行替换为 {len(new_lines_content)} 行新内容。文件共 {new_total} 行。{format_backup_info(resolved, history_number)}"
-    return "\n".join([summary, "", preview])
+    return "\n".join([summary, "", diff_text])
 
 
 def _build_replace_preview(lines_before, lines_after, start_line, end_line, old_count):
@@ -293,58 +302,25 @@ def file_tools_insert_lines(
 
     new_total = len(lines)
 
-    # 构建插入预览：─── 插入前/后 ───，前后各一行上下文，超 6 行截断
-    _MAX_BODY = 6
-    parts = []
-
-    # ── 插入前 ──
-    parts.append("─── 插入前 ───")
-    show_start = max(0, insert_pos - 2)
-    show_end = min(total_lines, insert_pos + 2)
-    if show_start > 0:
-        parts.append("  <<省略>>")
-    for i in range(show_start, show_end):
-        parts.append(f"{i + 1}\t{truncate_line(old_lines[i])}")
-    if show_end < total_lines:
-        parts.append("  <<省略>>")
-
-    parts.append("")
-    parts.append("─── 插入后 ───")
-
-    # ── 插入后：上下文 + 正文（正文超 _MAX_BODY 行时截断） ──
-    new_show_start = max(0, insert_pos - 2)
-    if new_show_start > 0:
-        parts.append("  <<省略>>")
-
-    # 上下文：插入位置前的行
-    for i in range(new_show_start, insert_pos):
-        parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
-
-    # 正文：新插入的行（超过 _MAX_BODY 行时截断）
-    if insert_count > _MAX_BODY:
-        for i in range(insert_pos, insert_pos + 2):
-            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
-        parts.append("  <<省略>>")
-        for i in range(insert_pos + insert_count - 2, insert_pos + insert_count):
-            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
-    else:
-        for i in range(insert_pos, insert_pos + insert_count):
-            parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
-
-    # 上下文：插入位置后的行
-    new_show_end = min(new_total, insert_pos + insert_count + 2)
-    for i in range(insert_pos + insert_count, new_show_end):
-        parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
-    if new_show_end < new_total:
-        parts.append("  <<省略>>")
-
-    preview = "\n".join(parts)
+    # 构建 +/- diff 预览
+    diff_parts = []
+    # 前一行上下文（按旧行号）
+    if insert_pos > 0:
+        diff_parts.append(f"  {insert_pos} > {truncate_line(old_lines[insert_pos - 1])}")
+    # + 组：新插入的行（按新行号）
+    for i in range(insert_pos, insert_pos + insert_count):
+        diff_parts.append(f"+ {i + 1} > {truncate_line(lines[i])}")
+    # 后一行上下文（按新行号，即原第 line 行被后移后的新位置）
+    next_line = insert_pos + insert_count
+    if next_line < new_total:
+        diff_parts.append(f"  {next_line + 1} > {truncate_line(lines[next_line])}")
+    diff_text = "\n".join(diff_parts)
 
     return (
         f"成功插入：已在第 {line} 行前插入了 {insert_count} 行内容。"
         f"文件从 {total_lines} 行变为 {new_total} 行。"
         f"{format_backup_info(resolved, history_number)}\n\n"
-        f"{preview}"
+        f"{diff_text}"
     )
 
 
@@ -358,7 +334,7 @@ def file_tools_delete_lines(
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
-    """删除文件中指定行区间的文本。修改前自动备份。返回时显示「─── 删除前/后 ───」对比，被删除的行标记（被删除）。写回时 \\r\\n/\\r 自动统一为 \\n。
+    """删除文件中指定行区间的文本。修改前自动备份。返回时显示 +/- diff 格式预览（前一行上下文 + 被删行 + 后一行上下文），不带 + 组。写回时 \\r\\n/\\r 自动统一为 \\n。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
@@ -403,38 +379,23 @@ def file_tools_delete_lines(
     except Exception as e:
         return format_error("删除行", f"写入文件时出错：{e}")
 
-    # 预览
-    parts = []
-    show_start = max(0, actual_start - 2)
-    show_end = min(total_lines, actual_end + 2)
-
-    parts.append("─── 删除前 ───")
-    if show_start > 0:
-        parts.append("  <<省略>>")
-    for i in range(show_start, show_end):
-        line_num = i + 1
-        if actual_start <= i < actual_end:
-            parts.append(f"{line_num}\t{truncate_line(old_lines[i])}（被删除）")
-        else:
-            parts.append(f"{line_num}\t{truncate_line(old_lines[i])}")
-    if show_end < total_lines:
-        parts.append("  <<省略>>")
-
-    parts.append("")
-    parts.append("─── 删除后 ───")
-
     new_total = len(lines)
-    for i in range(max(0, actual_start - 2), min(new_total, actual_start + (show_end - show_start) - 2)):
-        new_line_num = start_line + (i - actual_start)
-        parts.append(f"{new_line_num}\t{truncate_line(lines[i])}")
 
-    if new_total > actual_start + (show_end - show_start) - 2:
-        parts.append("<<省略>>")
+    # 构建 +/- diff 预览
+    diff_parts = []
+    # 前一行上下文（按旧行号）
+    if actual_start > 0:
+        diff_parts.append(f"  {actual_start} > {truncate_line(old_lines[actual_start - 1])}")
+    # - 组：被删除的行（按旧行号）
+    for i in range(actual_start, actual_end):
+        diff_parts.append(f"- {i + 1} > {truncate_line(old_lines[i])}")
+    # 后一行上下文（按新行号，即删除后该位置的行）
+    if actual_start < new_total:
+        diff_parts.append(f"  {actual_start + 1} > {truncate_line(lines[actual_start])}")
+    diff_text = "\n".join(diff_parts)
 
     summary = f"成功删除：已删除第 {start_line}~{end_line} 行（共 {actual_end - actual_start} 行）。文件从 {total_lines} 行变为 {new_total} 行。{format_backup_info(resolved, history_number)}"
-    parts.insert(0, summary)
-    parts.insert(1, "")
-    return "\n".join(parts)
+    return "\n".join([summary, "", diff_text])
 
 
 # ── 13. file_tools_replace ────────────────────────────────
@@ -472,8 +433,10 @@ def file_tools_replace(
     if not old_text:
         return format_error("替换", "old_text 不能为空字符串")
 
-    if count < 1:
-        return format_error("替换", f"count 参数值 {count} 不合法，必须 >= 1")
+    if count == 0:
+        return format_error("替换", f"count 参数值 {count} 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
+    if count < -1:
+        return format_error("替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
@@ -505,7 +468,10 @@ def file_tools_replace(
             f"未找到匹配「{old_text}」的内容。"
         )
 
-    effective_count = min(count, match_count)
+    if count == -1:
+        effective_count = match_count
+    else:
+        effective_count = min(count, match_count)
 
     if dry_run:
         return (
@@ -806,4 +772,5 @@ def file_tools_indent_lines(
         f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text} {count} 个缩进。"
         f"{format_backup_info(resolved, history_number)}\n\n"
         f"{diff_text}\n"
+    )       f"{diff_text}\n"
     )

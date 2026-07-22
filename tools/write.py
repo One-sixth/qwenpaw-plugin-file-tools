@@ -9,7 +9,7 @@ import shutil
 from typing import Literal
 
 try:
-    from ..backup.manager import backup_file
+    from ..backup.manager import backup_file, get_last_backup_error
     from ..utils import (
         format_backup_info,
         format_error,
@@ -17,7 +17,7 @@ try:
         resolve_path,
     )
 except ImportError:
-    from backup.manager import backup_file
+    from backup.manager import backup_file, get_last_backup_error
     from utils import (
         format_backup_info,
         format_error,
@@ -55,13 +55,16 @@ def file_tools_write(
         char_count = len(normalized)
         line_count = len(normalized.split("\n"))
 
-    # 文件已存在时先备份（备份失败不阻塞写入，仅警告）
+    # 文件已存在时先备份（备份失败则拒绝修改）
     history_number = None
-    backup_warning = ""
     if os.path.isfile(resolved):
         history_number = backup_file(resolved)
         if history_number is None:
-            backup_warning = "\n⚠️ 警告：备份原文件失败，但已直接覆盖写入。请手动确认是否需要备份。"
+            error_detail = get_last_backup_error() or "未知原因"
+            return format_error(
+                "写入",
+                f"备份原文件失败（{error_detail}）",
+            )
 
     # 解析 line_separator（Literal 约束确保只传 auto / \\n / \\r\\n）
     newline: str | None = None  # auto → Python 默认行为（按平台转换）
@@ -92,7 +95,4 @@ def file_tools_write(
             f"{format_backup_info(resolved, history_number)}"
         )
     else:
-        msg = f"成功写入文件，共 {char_count} 个字符（{line_count} 行）。"
-        if backup_warning:
-            msg += backup_warning
-        return msg
+        return f"成功写入文件，共 {char_count} 个字符（{line_count} 行）。"

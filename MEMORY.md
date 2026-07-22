@@ -461,4 +461,83 @@ for m in reversed(effective_matches):
 #### 2. 系统提示数字前加空格
 - **改前**：`已对第 10~16 行减少了4 个缩进`
 - **改后**：`已对第 10~16 行减少了 4 个缩进`
-- 拼接从 `{mode_text}{count}` 改为 `{mode_text} {count}`
+- 拼接从 `{mode_text}{count}` 改为 `{mode_text} {count}`## 2026-07-22 备份失败处理策略 — 安全优先
+
+### 背景
+字节级写入工具（`file_tools_write_bytes`、`file_tools_replace_bytes`）的备份失败处理，原设计是只给警告不阻断（`backup_warning` 变量 + 继续写入）。审计发现这种做法不安全——字节写入可能导致文件损坏且永久无法修复。
+
+### 决策
+备份失败时，必须**拒绝修改**，要求用户明确授权才能继续。具体规则：
+
+1. **`backup_file()` 返回 `None` 时**：`return format_error(...)` 立即返回，不执行写入
+2. **错误信息必须包含**：
+   - 「暂停执行」
+   - 「向用户询问」
+   - 「同意跳过备份」
+   - 「skip_backup=True」
+3. **用户必须打字「同意跳过备份」** 才授权，模糊回应（如"好的""继续"）不通过
+4. `_build_write_full_result` 函数签名去掉 `backup_warning` 参数
+
+### 涉及工具
+- `file_tools_write_bytes`（全量覆盖模式，`offset=-1`）
+- `file_tools_replace_bytes`
+
+### 涉及的代码变更
+- `tools/bytes.py`：两个工具的备份失败分支，从 `pass` / 设 `backup_warning` 改为 `return format_error(...)`
+- `tools/bytes.py`：`_build_write_full_result` 签名简化，去掉 `backup_warning` 参数
+
+### 不涉及的工具
+- 其他修改类工具（`append`、`replace_lines` 等，备份失败直接报错阻断）
+
+### 扩展：`file_tools_write` 统一为安全优先（2026-07-22）
+审计后决定将 `file_tools_write` 也统一为安全优先策略。文本文件虽小，但备份失败可能意味着磁盘满、权限异常或配置损坏等严重问题，停下来排查是合理的。
+
+**改动**：
+- `backup/manager.py`：新增 `_last_backup_error` 模块级变量 + `get_last_backup_error()` 函数，记录每次备份失败的具体原因
+- `tools/write.py`：备份失败时 `return format_error(...)` 拒绝修改，错误信息中包含具体失败原因，无 `skip_backup` 参数因此不提示跳过
+
+**涉及工具**：
+- `file_tools_write`（全量覆盖写入）## 2026-07-22 改动：`file_tools_replace` 增加 `count=-1` 支持
+
+### 改动
+- `file_tools_replace` 的 `count` 参数现在支持 `count=-1`（替换全部匹配），与 `regex_replace` 和 `replace_bytes` 一致
+- 校验逻辑：`count < 1` 拦截改为 `count == 0` 报错 + `count < -1` 报错
+- `effective_count` 计算：`count=-1` 时取 `match_count`，否则 `min(count, match_count)`
+- docstring 同步更新：`count=-1 表示替换全部匹配，count>=1 表示替换指定数量`
+
+### 测试
+- `test_count_minus1`：`count=20` → `count=-1`，语义与测试名一致
+- `test_invalid_count`：`count=-1` 从报错改为断言成功替换
+- 全量 318 测试全部通过## 2026-07-22 改动：预览格式统一为 `+/-` diff
+
+### 背景
+泰斗先生要求将 `replace_lines`、`delete_lines`、`insert_lines` 的预览输出改为 `+/-` diff 格式，与 `indent_lines` 统一。
+
+### 改动
+
+**`file_tools_replace_lines`**：
+- 旧：`─── 替换前/后 ───` 对称预览 + `_build_replace_preview` 函数
+- 新：`+/-` diff 格式，先 `-` 旧行再 `+` 新行，带行号
+
+**`file_tools_delete_lines`**：
+- 旧：`─── 删除前/后 ───` 对比，被删行标记（被删除）
+- 新：`+/-` diff 格式，前一行上下文 + `-` 被删行 + 后一行上下文，无 `+` 组
+
+**`file_tools_insert_lines`**：
+- 旧：`─── 插入前/后 ───` 预览，前后各一行上下文，超 6 行截断
+- 新：`+/-` diff 格式，前一行上下文 + `+` 新插入行 + 后一行上下文，无 `-` 组
+
+### 关键设计决策
+- **`delete_lines` 无 `+` 组**：删除就是删除，不需要告诉用户删完后那里变成了什么
+- **`insert_lines` 无 `-` 组**：插入就是新内容，不需要展示被挤开的旧行
+- **上下文行**：前后各一行上下文，用两个空格对齐（`  N > ...`）
+- **`replace_lines` 保留 `+/-` 双组**：替换是"旧→新"的映射，双组合理
+
+### 衔接
+- `_build_replace_preview` 函数变为死代码，不再被任何工具调用
+- `delete_lines` 预览死代码 bug（审计 P0 #2）自然解决
+- 审计报告已更新
+
+### 测试
+- 更新 `test_preview_format` 断言
+- 全量 318 测试全部通过

@@ -253,8 +253,12 @@ class TestDeleteLines:
 
     def test_preview_format(self, multi_line_file):
         result = file_tools_delete_lines(multi_line_file, 5, 8)
-        assert "（被删除）" in result
+        assert "  4 > line4" in result      # 前一行上下文
+        assert "- 5 > line5" in result       # 被删除的行
+        assert "- 6 > line6" in result
+        assert "  5 > line9" in result       # 后一行上下文
         assert "已删除" in result
+        assert "+" not in result             # 不应该有 + 组
 
     def test_nonexistent_file(self, tmp_dir):
         path = os.path.join(tmp_dir, "nonexist.txt")
@@ -349,7 +353,8 @@ class TestReplace:
         assert "lXXX" in lines[0]
 
     def test_count_minus1(self, multi_line_file):
-        file_tools_replace(multi_line_file, "line", "ROW", count=20)
+        """count=-1 替换全部匹配"""
+        file_tools_replace(multi_line_file, "line", "ROW", count=-1)
         content = _read_file(multi_line_file)
         assert "line" not in content
 
@@ -358,13 +363,12 @@ class TestReplace:
         assert "失败" in result
 
     def test_invalid_count(self, multi_line_file):
-        """count<1 应报错"""
+        """count=0 应报错，count=-1 应通过"""
         result = file_tools_replace(multi_line_file, "line", "ROW", count=0)
         assert "失败" in result
         assert "count" in result
         result2 = file_tools_replace(multi_line_file, "line", "ROW", count=-1)
-        assert "失败" in result2
-        assert "count" in result2
+        assert "成功替换" in result2
 
 
     def test_cross_line_matching(self, multi_line_file):

@@ -772,5 +772,4 @@ def file_tools_indent_lines(
         f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text} {count} 个缩进。"
         f"{format_backup_info(resolved, history_number)}\n\n"
         f"{diff_text}\n"
-    )       f"{diff_text}\n"
     )

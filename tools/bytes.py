@@ -130,13 +130,15 @@ def file_tools_write_bytes(
     if offset == -1:
         # ── 全量覆盖 ──
         history_number = None
-        backup_warning = ""
         if os.path.isfile(resolved) and not skip_backup:
             history_number = backup_file(resolved)
             if history_number is None:
-                backup_warning = (
-                    "\n⚠️ 警告：备份原文件失败，但已直接覆盖写入。"
-                    "请手动确认是否需要备份。"
+                return format_error(
+                    "写入",
+                    "备份原文件失败",
+                    "请暂停执行，向用户询问是否可以不备份。"
+                    "只有用户明确打字「同意跳过备份」后，"
+                    "才能设置 skip_backup=True 继续执行。",
                 )
 
         # 原子写入：先写 .temp_file，再 shutil.move 替换
@@ -153,7 +155,7 @@ def file_tools_write_bytes(
             return format_error("写入", f"写入文件时出错：{e}")
 
         # 构建返回消息
-        result = _build_write_full_result(actual, expected_bytes, history_number, backup_warning, resolved)
+        result = _build_write_full_result(actual, expected_bytes, history_number, resolved)
         return result
 
     else:
@@ -189,7 +191,6 @@ def _build_write_full_result(
     actual: int,
     expected: int,
     history_number: int | None,
-    backup_warning: str,
     resolved: str,
 ) -> str:
     """构建全量覆盖的返回消息。"""

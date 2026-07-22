@@ -447,3 +447,18 @@ for m in reversed(effective_matches):
 - `test_read.py`：55 个测试（新增 8 个边缘测试）
 - `test_edit.py`：89 个测试（TestRegexReplace 重写为 21 个测试）
 - 全量 305 测试全部通过
+
+## 2026-07-22 改动汇总（第二轮）
+
+### `file_tools_indent_lines` 返回格式优化
+
+#### 1. diff 预览改为先 - 后 + 分组
+- **改前**：`- 1, + 1, - 2, + 2` 交错排列
+- **改后**：所有 `-` 行排前面，所有 `+` 行排后面，视觉更清晰
+- 代码：两个 `for` 循环代替原来的一个循环（`changes` 遍历两次，分别取 old 和 new）
+- 同步修改的 `_` 解包：`for row_num, old, _ in changes` 和 `for row_num, _, new in changes`
+
+#### 2. 系统提示数字前加空格
+- **改前**：`已对第 10~16 行减少了4 个缩进`
+- **改后**：`已对第 10~16 行减少了 4 个缩进`
+- 拼接从 `{mode_text}{count}` 改为 `{mode_text} {count}`

@@ -802,7 +802,7 @@ def file_tools_indent_lines(
 
     mode_text = "增加了" if mode == "expand" else "减少了"
     return (
-        f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text}{count} 个缩进。"
+        f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text} {count} 个缩进。"
         f"{format_backup_info(resolved, history_number)}\n\n"
         f"{diff_text}\n"
     )

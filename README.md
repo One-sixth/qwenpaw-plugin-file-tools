@@ -2,7 +2,7 @@
 
 **补充 QwenPaw 缺失的文件操作能力：安全文件操作、行级编辑、文件信息、文本搜索、批量处理、历史回滚、回收站操作、字节级操作。**
 
-## 功能概览（25 个工具）
+## 功能概览（26 个工具）
 
 ### 信息读取类
 | 工具 | 功能 | 返回格式 |
@@ -16,9 +16,9 @@
 ### 文本读取类
 | 工具 | 功能 | 返回格式 |
 |------|------|:--------:|
-| `file_tools_read_lines` | 按行读取文本文件 | CSV |
-| `file_tools_read_block` | 读取矩形块（观察窗口） | CSV |
-| `file_tools_regex` | 正则匹配文件内容 | CSV |
+| `file_tools_read_lines` | 按行读取文本文件（支持行号开关） | 纯文本 |
+| `file_tools_read_block` | 读取矩形块（行+列范围，观察窗口） | 纯文本 |
+| `file_tools_regex` | 正则匹配（支持跨行，捕获组提取） | JSON |
 
 ### 文件修改类（自动备份）
 | 工具 | 功能 |
@@ -28,7 +28,8 @@
 | `file_tools_insert_lines` | 在指定行前插入内容 |
 | `file_tools_delete_lines` | 删除指定行区间 |
 | `file_tools_replace` | 查找替换（子串匹配，支持 dry_run） |
-| `file_tools_regex_replace` | 正则替换（支持反向引用，支持 dry_run） |
+| `file_tools_regex_replace` | 正则替换（支持跨行，支持 dry_run） |
+| `file_tools_indent_lines` | 调整行首缩进（expand/shrink） |
 | `file_tools_write` | 全量写入文件（原子写入，自动备份） |
 
 ### 安全文件操作类
@@ -91,7 +92,7 @@ XX操作失败，因为XX原因。如果要XX，请XX。
 
 ## 历史备份机制
 
-修改类工具（append、replace_lines、insert_lines、delete_lines、replace、regex_replace、write、write_bytes、replace_bytes）在执行前自动备份原文件到 `_file_tools/history/` 目录。使用 `file_tools_history` 查看版本列表，`file_tools_undo` 恢复指定版本。
+修改类工具（append、replace_lines、insert_lines、delete_lines、replace、regex_replace、indent_lines、write、write_bytes、replace_bytes）在执行前自动备份原文件到 `_file_tools/history/` 目录。使用 `file_tools_history` 查看版本列表，`file_tools_undo` 恢复指定版本。
 
 ## 字节级工具说明
 

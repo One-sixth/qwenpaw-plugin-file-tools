@@ -792,10 +792,11 @@ def file_tools_indent_lines(
     except Exception as e:
         return format_error("缩进调整", f"写入文件时出错：{e}")
 
-    # 构建 diff 预览
+    # 构建 diff 预览（先 - 后 + 分组）
     diff_parts = []
-    for row_num, old, new in changes:
+    for row_num, old, _ in changes:
         diff_parts.append(f"- {row_num} > {truncate_line(old)}")
+    for row_num, _, new in changes:
         diff_parts.append(f"+ {row_num} > {truncate_line(new)}")
     diff_text = "\n".join(diff_parts)
 

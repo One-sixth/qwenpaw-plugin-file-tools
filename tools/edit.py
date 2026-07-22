@@ -409,15 +409,16 @@ def file_tools_delete_lines(
     show_end = min(total_lines, actual_end + 2)
 
     parts.append("─── 删除前 ───")
+    if show_start > 0:
+        parts.append("  <<省略>>")
     for i in range(show_start, show_end):
         line_num = i + 1
         if actual_start <= i < actual_end:
             parts.append(f"{line_num}\t{truncate_line(old_lines[i])}（被删除）")
         else:
             parts.append(f"{line_num}\t{truncate_line(old_lines[i])}")
-
-    if actual_start > show_start + 2:
-        parts.insert(show_end - show_start, "<<省略>>")  # 修正插入位置
+    if show_end < total_lines:
+        parts.append("  <<省略>>")
 
     parts.append("")
     parts.append("─── 删除后 ───")

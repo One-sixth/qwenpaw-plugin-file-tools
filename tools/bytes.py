@@ -204,8 +204,6 @@ def _build_write_full_result(
 
     if history_number is not None:
         msg += f"\n{format_backup_info(resolved, history_number)}"
-    elif backup_warning:
-        msg += backup_warning
 
     return msg
 
@@ -337,11 +335,17 @@ def file_tools_replace_bytes(
         return format_error("替换", "old_bytes 不能为空，请输入要查找的字节序列")
 
     # 备份
+    history_number = None
     if not skip_backup:
         history_number = backup_file(resolved)
         if history_number is None:
-            # 备份失败仍继续，加警告
-            pass
+            return format_error(
+                "替换",
+                "备份原文件失败",
+                "请暂停执行，向用户询问是否可以不备份。"
+                "只有用户明确打字「同意跳过备份」后，"
+                "才能设置 skip_backup=True 继续执行。",
+            )
     else:
         history_number = None
 

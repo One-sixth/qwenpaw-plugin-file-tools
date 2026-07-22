@@ -285,13 +285,6 @@ class TestDeleteLines:
             content = f.read()
         assert b"\r\n" in content
 
-    def test_line_separator_windows(self, multi_line_file):
-        """line_separator=\\r\\n 输出 Windows 换行。"""
-        file_tools_delete_lines(multi_line_file, 1, 1, line_separator="\r\n")
-        with open(multi_line_file, "rb") as f:
-            content = f.read()
-        assert b"\r\n" in content
-
 
 class TestReplace:
     def test_basic_replace(self, multi_line_file):

@@ -81,7 +81,7 @@ def file_tools_read_lines(
 
     total_lines = len(lines)
     if start_line > total_lines + 1:
-        return f"按行读取失败，因为文件共 {total_lines} 行，起始行号 {start_line} 超出范围。"
+        return format_error("按行读取", f"文件共 {total_lines} 行，起始行号 {start_line} 超出范围")
 
     actual_start = start_line - 1
     if line_count == -1:
@@ -161,7 +161,7 @@ def file_tools_read_block(
     if start_row > end_row:
         return f"读取矩形块失败，因为起始行号 {start_row} 大于结束行号 {end_row}。"
     if start_col < 1 or end_col < 1:
-        return f"读取矩形块失败，因为偏移量必须 >= 1。"
+        return format_error("读取矩形块", "起始列号和结束列号必须 >= 1")
 
     if not os.path.isfile(resolved):
         return (

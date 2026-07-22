@@ -3,6 +3,8 @@
 import json
 import os
 
+import pytest
+
 from tools.info import (
     file_tools_diff,
     file_tools_guess,
@@ -267,6 +269,31 @@ class TestInfo:
         result = file_tools_info(tmp_file)
         json.loads(result)
 
+    def test_chinese_filename(self, tmp_dir):
+        """中文文件名路径应正确返回信息。"""
+        path = os.path.join(tmp_dir, "测试文件.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("test")
+        result = file_tools_info(path)
+        data = json.loads(result)
+        assert data["exists"] is True
+        assert "测试文件" in data["path"]
+
+    def test_symlink(self, tmp_dir):
+        """符号链接应正确返回信息。"""
+        target = os.path.join(tmp_dir, "target.txt")
+        with open(target, "w") as f:
+            f.write("test")
+        link = os.path.join(tmp_dir, "link.txt")
+        try:
+            os.symlink(target, link)
+        except OSError:
+            pytest.skip("当前环境不支持创建符号链接")
+        result = file_tools_info(link)
+        data = json.loads(result)
+        assert data["exists"] is True
+        assert data["is_link"] is True
+
 
 class TestGuess:
     def test_text_file(self, tmp_file):
@@ -288,6 +315,14 @@ class TestGuess:
         result = file_tools_guess(tmp_file)
         data = json.loads(result)
         assert data.get("encoding") is not None
+
+    def test_gbk_file(self, gbk_file):
+        """GBK 编码文件应正确检测编码。"""
+        result = file_tools_guess(gbk_file)
+        data = json.loads(result)
+        assert data["type"] == "text"
+        encoding = data.get("encoding", "").lower()
+        assert "gb" in encoding or "utf-8" in encoding
 
 
 class TestDiff:
@@ -384,3 +419,16 @@ class TestHistory:
         result = file_tools_history("/nonexistent_xyz")
         data = json.loads(result)
         assert "error" in data
+
+    def test_after_modifications(self, tmp_file):
+        """多次修改文件后，历史记录应包含对应版本。"""
+        from tools.edit import file_tools_append, file_tools_replace_lines
+
+        file_tools_append(tmp_file, "new_line\n")
+        file_tools_replace_lines(tmp_file, 1, 1, "modified\n")
+        result = file_tools_history(tmp_file)
+        data = json.loads(result)
+        assert len(data["history"]) >= 2
+        for entry in data["history"]:
+            assert "number" in entry or "history_number" in entry
+            assert "created_at" in entry

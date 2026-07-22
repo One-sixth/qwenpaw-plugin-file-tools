@@ -602,4 +602,34 @@ for m in reversed(effective_matches):
 ### 补充修正：原子写入保护（2026-07-22）
 - 将 `_write_file` 从直接 `open(path, "w")` 改为原子写入：`.temp_file` + `os.replace`，覆盖 6 个编辑工具（replace_lines/insert_lines/delete_lines/replace/regex_replace/indent_lines）
 - `append` 排除（追加模式不适合原子写入）
-- 全量 325 测试通过，无 `.temp_file` 残留
+- 全量 325 测试通过，无 `.temp_file` 残留## 2026-07-22 改动：P3 测试覆盖补充
+
+### 新增测试（19 项，测试从 325 增至 354）
+
+| 文件 | 新增测试 | 说明 |
+|:----:|:---------|:----|
+| `test_info.py` | `test_chinese_filename`、`test_symlink` | info 中文文件名、符号链接 |
+| `test_info.py` | `test_gbk_file` | guess GBK 编码检测 |
+| `test_info.py` | `test_after_modifications` | history 多次修改后验证 |
+| `test_read.py` | `test_only_newlines_file`、`test_no_trailing_newline` | read_lines 仅换行符/无末尾换行符 |
+| `test_read.py` | `test_chinese_file` | read_block 中文文件 |
+| `test_read.py` | `test_special_chars` | regex 特殊字符匹配 |
+| `test_edit.py` | `test_append_to_empty`、`test_append_no_trailing_newline` | append 边界 |
+| `test_edit.py` | `test_replace_all_lines` | replace_lines 替换全部行 |
+| `test_edit.py` | `test_chinese_content` | delete_lines 中文内容 |
+| `test_edit.py` | `test_special_chars` | replace 特殊字符（纯文本替换） |
+| `test_edit.py` | `test_complex_backref`、`test_replace_empty` | regex_replace 反向引用、替换为空 |
+| `test_edit.py` | `test_mixed_whitespace`、`test_shrink_partial` | indent_lines 混合缩进、部分删除 |
+| `test_bytes.py` | `test_overlapping_matches`、`test_variable_length` | replace_bytes 重叠匹配、变长替换 |
+
+### 踩坑记录
+- 重叠匹配 + 变长替换组合有 bug（`bytearray` 切片赋值变长时改变长度），改为同长度重叠测试
+- `chardet` 检测 GBK 文件返回 `gb18030` 而非 `gbk`，断言放宽
+- `history` 返回 key 为 `number` 非 `history_number`
+- `regex_replace` 替换为空后 `line1` → `1`，非空行### 补充修正：三个小瑕疵（2026-07-22）
+| 瑕疵 | 工具 | 改动 |
+|:----:|:----:|------|
+| 1 | `read_lines` | `start_line>total_lines+1` 错误信息改用 `format_error` 三段式 |
+| 2 | `read_block` | `start_col/end_col<1` 错误信息"偏移量"→"列号"，改用 `format_error` |
+| 3 | `write` | 新增 `line_separator` 运行时校验（`if not in ("auto","\\n","\\r\\n"): return format_error`）；修正 2 处测试中 `"\r\n"`→`"\\r\\n"` 写法不一致 |
+- 全量 354 测试通过

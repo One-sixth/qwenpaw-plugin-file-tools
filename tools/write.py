@@ -44,6 +44,10 @@ def file_tools_write(
     """
     resolved = resolve_path(path)
 
+    # line_separator 运行时校验（schema 层已拦截，此处双重保障）
+    if line_separator not in ("auto", "\\n", "\\r\\n"):
+        return format_error("写入", f"line_separator 参数值 {line_separator} 不合法，仅支持 auto、\\n、\\r\\n")
+
     # 统一换行符 \\r\\n/\\r → \\n
     normalized = normalize_newlines(content)
 

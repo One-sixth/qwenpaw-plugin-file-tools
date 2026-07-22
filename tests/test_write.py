@@ -45,7 +45,7 @@ class TestWriteNewFile:
 
     def test_create_new_crlf(self, tmp_dir):
         path = os.path.join(tmp_dir, "crlf.txt")
-        result = file_tools_write(path, "line1\nline2", line_separator="\r\n")
+        result = file_tools_write(path, "line1\nline2", line_separator="\\r\\n")
         assert "成功写入文件" in result
         with open(path, "rb") as f:
             raw = f.read()
@@ -143,16 +143,16 @@ class TestWriteLineSeparator:
 
     def test_explicit_crlf(self, tmp_dir):
         path = os.path.join(tmp_dir, "crlf.txt")
-        file_tools_write(path, "a\nb", line_separator="\r\n")
+        file_tools_write(path, "a\nb", line_separator="\\r\\n")
         with open(path, "rb") as f:
             raw = f.read()
         assert raw == b"a\r\nb"
 
     def test_invalid_separator(self, tmp_dir):
-        """line_separator 传非法值会被 schema 层拦截，此处测试函数调用不会报错"""
+        """line_separator 传非法值应报错"""
         path = os.path.join(tmp_dir, "bad.txt")
         result = file_tools_write(path, "content", line_separator="invalid")
-        assert "失败" in result or "写入" in result
+        assert "失败" in result
     """测试错误处理。"""
 
     def test_invalid_path(self):

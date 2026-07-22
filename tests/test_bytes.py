@@ -426,3 +426,31 @@ class TestReplaceBytes:
         pos_value = pos_lines[2]  # 第3行是偏移量数据（第1行空，第2行表头，第3行数据）
         assert "0" in pos_value
         assert "3" not in pos_value  # 默认只替换第一个，偏移量 3 不在结果中
+
+    def test_overlapping_matches(self, tmp_dir):
+        """重叠匹配应正确处理（同长度替换）。"""
+        path = os.path.join(tmp_dir, "overlap.bin")
+        _bin_file(path, b"AAA")
+        # 同长度替换：AAA 中 AA 重叠匹配位置 0 和 1，替换后为 BBB
+        result = file_tools_replace_bytes(path, old_bytes="41 41", new_bytes="42 42", count=-1)
+        assert "替换成功" in result
+        assert "2 处" in result
+        data = _read_bin(path)
+        assert data == b"BBB"
+
+    def test_variable_length(self, tmp_dir):
+        """变长替换（非重叠匹配）应正确。"""
+        path = os.path.join(tmp_dir, "varlen.bin")
+        _bin_file(path, b"\x00\x01\x02\x03")
+        # 替换为更长的数据（非重叠匹配）
+        result = file_tools_replace_bytes(path, old_bytes="00 01", new_bytes="FF FF FF")
+        assert "替换成功" in result
+        data = _read_bin(path)
+        assert data == b"\xff\xff\xff\x02\x03"
+        # 替换为更短的数据（非重叠匹配）
+        path2 = os.path.join(tmp_dir, "varlen2.bin")
+        _bin_file(path2, b"\x00\x01\x02\x03")
+        result2 = file_tools_replace_bytes(path2, old_bytes="00 01 02", new_bytes="FF")
+        assert "替换成功" in result2
+        data2 = _read_bin(path2)
+        assert data2 == b"\xff\x03"

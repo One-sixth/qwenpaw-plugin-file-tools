@@ -79,6 +79,23 @@ class TestAppend:
         # 追加的 \nnew_line 应该被转为 \r\nnew_line
         assert b"\r\nnew_line" in raw
 
+    def test_append_to_empty(self, empty_file):
+        """追加到空文件应正常。"""
+        result = file_tools_append(empty_file, "hello")
+        assert "成功追加" in result
+        with open(empty_file) as f:
+            assert f.read() == "hello"
+
+    def test_append_no_trailing_newline(self, tmp_dir):
+        """末尾无换行符文件追加内容应直接接在最后一行后。"""
+        path = os.path.join(tmp_dir, "no_eol.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("line1")
+        file_tools_append(path, "\nline2")
+        with open(path) as f:
+            content = f.read()
+        assert content == "line1\nline2"
+
 
 class TestReplaceLines:
     def test_replace_range(self, multi_line_file):
@@ -133,6 +150,32 @@ class TestReplaceLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"
+
     def test_boundary_start(self, multi_line_file):
         result = file_tools_replace_lines(multi_line_file, 1, 1, "first")
         assert "成功替换" in result
@@ -164,6 +207,16 @@ class TestReplaceLines:
         with open(multi_line_file, "rb") as f:
             content = f.read()
         assert b"\r\n" in content
+
+    def test_replace_all_lines(self, multi_line_file):
+        """替换全部行应正常。"""
+        lines = _read_lines(multi_line_file)
+        total = len(lines)
+        new_content = "\n".join(["new"] * total)
+        result = file_tools_replace_lines(multi_line_file, 1, total, new_content)
+        assert "成功替换" in result
+        new_lines = _read_lines(multi_line_file)
+        assert all(l == "new" for l in new_lines)
 
 
 class TestInsertLines:
@@ -209,6 +262,32 @@ class TestInsertLines:
         file_tools_insert_lines(multi_line_file, 1, "new_line")
         history = list_history(multi_line_file)
         assert len(history) == 1
+
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"
 
     def test_line_separator_unix(self, multi_line_file):
         """line_separator=\\n 输出 Unix 换行。"""
@@ -274,6 +353,32 @@ class TestDeleteLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"
+
     def test_line_separator_unix(self, multi_line_file):
         """line_separator=\\n 输出 Unix 换行（删除后剩余行之间用 \\n 连接）。"""
         file_tools_delete_lines(multi_line_file, 1, 1, line_separator="\\n")
@@ -288,6 +393,14 @@ class TestDeleteLines:
         with open(multi_line_file, "rb") as f:
             content = f.read()
         assert b"\r\n" in content
+
+    def test_chinese_content(self, chinese_file):
+        """中文内容删除应正常。"""
+        result = file_tools_delete_lines(chinese_file, 2, 2)
+        assert "成功删除" in result
+        lines = _read_lines(chinese_file)
+        assert len(lines) == 2
+        assert "这是第一行" in lines[0]
 
 
 class TestReplace:
@@ -343,6 +456,32 @@ class TestReplace:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"
+
     def test_case_sensitive(self, multi_line_file):
         result = file_tools_replace(multi_line_file, "LINE", "X")
         assert "失败" in result
@@ -396,6 +535,16 @@ class TestReplace:
         with open(multi_line_file, "rb") as f:
             content = f.read()
         assert b"\r\n" in content
+
+    def test_special_chars(self, tmp_dir):
+        """替换含正则特殊字符的文本应正确（纯文本替换，非正则）。"""
+        path = os.path.join(tmp_dir, "special.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("price: $10.00\n")
+        result = file_tools_replace(path, "$10.00", "$20.00")
+        assert "成功替换" in result
+        with open(path) as f:
+            assert "$20.00" in f.read()
 
 
 class TestRegexReplace:
@@ -475,6 +624,32 @@ class TestRegexReplace:
         file_tools_regex_replace(multi_line_file, r"line", "ROW")
         history = list_history(multi_line_file)
         assert len(history) == 1
+
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"
 
     def test_start_lt_1(self, multi_line_file):
         """start<1 应报错"""
@@ -561,6 +736,25 @@ class TestRegexReplace:
         assert "def foo():" in lines[0]  # foo 被替换了
         assert "def bar()" in lines[3]   # bar 还在（第2个匹配）
         assert "return 42" in lines[4]
+
+    def test_complex_backref(self, tmp_dir):
+        """复杂反向引用（命名组、条件替换）应正确。"""
+        path = os.path.join(tmp_dir, "backref.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("foo_123\nbar_456\n")
+        result = file_tools_regex_replace(path, r"(\w+)_(\d+)", r"\2_\1", count=-1)
+        assert "成功替换" in result
+        lines = _read_lines(path)
+        assert lines[0] == "123_foo"
+        assert lines[1] == "456_bar"
+
+    def test_replace_empty(self, multi_line_file):
+        """替换为空字符串应删除匹配内容。"""
+        result = file_tools_regex_replace(multi_line_file, r"line", "", count=-1)
+        assert "成功替换" in result
+        lines = _read_lines(multi_line_file)
+        assert all("line" not in l for l in lines)  # "line" 被移除，只剩数字
+        assert lines[0] == "1"
 
 
 class TestIndentLines:
@@ -671,3 +865,29 @@ class TestIndentLines:
         file_tools_indent_lines(multi_line_file, mode="expand", count=2)
         history = list_history(multi_line_file)
         assert len(history) == 1
+
+    def test_mixed_whitespace(self, tmp_dir):
+        """混合缩进内容（tab+空格混合）应正确处理。"""
+        path = os.path.join(tmp_dir, "mixed.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\t  mixed\n  \tmixed2\nplain\n")
+        result = file_tools_indent_lines(path, mode="expand", count=2)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        assert lines[0].startswith("  ")
+        assert lines[2].startswith("  ")
+
+    def test_shrink_partial(self, tmp_dir):
+        """shrink 模式删除的空白数不超过行首实际空白数。"""
+        path = os.path.join(tmp_dir, "partial.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("  3spaces\n\t1tab\n       8spaces\n")
+        result = file_tools_indent_lines(path, mode="shrink", count=4)
+        assert "成功缩进" in result
+        lines = _read_lines(path)
+        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
+        assert lines[0] == "3spaces"
+        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
+        assert lines[1] == "1tab"
+        # "       8spaces" → 删4个空格，变成"   8spaces"
+        assert lines[2] == "   8spaces"

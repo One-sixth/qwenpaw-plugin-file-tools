@@ -129,6 +129,23 @@ class TestReadLines:
         assert "<<truncated>>" in result
         assert "如需继续阅读" in result
 
+    def test_only_newlines_file(self, tmp_dir):
+        """仅换行符文件应正确读取。"""
+        path = os.path.join(tmp_dir, "newlines.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n\n\n")
+        result = file_tools_read_lines(path, line_count=-1, show_line_number=False)
+        assert result.count("\n") == 3  # 3 个换行符 = 4 行（含末尾空行）
+
+    def test_no_trailing_newline(self, tmp_dir):
+        """末尾无换行符文件应正确读取。"""
+        path = os.path.join(tmp_dir, "no_eol.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("line1\nline2")
+        result = file_tools_read_lines(path, line_count=-1, show_line_number=True)
+        assert "1 > line1" in result
+        assert "2 > line2" in result
+
 
 class TestReadBlock:
     def test_basic(self, multi_line_file):
@@ -266,6 +283,12 @@ class TestReadBlock:
         assert len(lines) == 3
         assert lines[0] == "line2"
         assert lines[2] == "line4"
+
+    def test_chinese_file(self, chinese_file):
+        """中文文件应正确读取矩形块。"""
+        result = file_tools_read_block(chinese_file, start_row=1, end_row=2, show_line_number=True)
+        assert "1 > 这是第一行" in result
+        assert "2 > 这是第二行" in result
 
 
 class TestRegex:
@@ -439,3 +462,13 @@ class TestRegex:
         result = self._parse(file_tools_regex(multi_line_file, pattern=r"line"))
         assert isinstance(result, dict)
         assert "note" not in result
+
+    def test_special_chars(self, tmp_dir):
+        """正则特殊字符（如 . * + ? 等）应正确匹配。"""
+        path = os.path.join(tmp_dir, "special.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("hello.world\nfoo*bar\nbaz+qux\n")
+        result = self._parse(file_tools_regex(path, pattern=r"hello\.world"))
+        assert result["total_matches"] == 1
+        result2 = self._parse(file_tools_regex(path, pattern=r"foo\*bar"))
+        assert result2["total_matches"] == 1

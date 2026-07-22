@@ -67,7 +67,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_info",
-      "description": "查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回提示信息。",
+      "description": "查看文件或目录的元数据，返回 JSON 格式。包含路径、大小、权限、创建时间和修改时间等信息。路径不存在时返回错误提示。",
       "parameters": {
         "properties": {
           "path": {
@@ -356,7 +356,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_replace_lines",
-      "description": "整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示「─── 替换前/替换后 ───」对称预览，正文区超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "description": "整段替换文件中的指定行区间，替换内容可以比原区间行数多或少。修改前自动备份。返回时显示 +/- diff 格式预览（先 - 旧行再 + 新行，带行号）。写回时 \\r\\n/\\r 自动统一为 \\n。",
       "parameters": {
         "properties": {
           "path": {
@@ -405,7 +405,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_insert_lines",
-      "description": "在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示「─── 插入前/后 ───」预览，前后各一行上下文，插入行超过 6 行时只显示前 2 + 后 2 行。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "description": "在指定行号之前插入新内容，可一次插入多行。修改前自动备份。返回时显示 +/- diff 格式预览（前一行上下文 + 新插入行 + 后一行上下文），不带被挤开的旧行。写回时 \\r\\n/\\r 自动统一为 \\n。",
       "parameters": {
         "properties": {
           "path": {
@@ -449,7 +449,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_delete_lines",
-      "description": "删除文件中指定行区间的文本。修改前自动备份。返回时显示「─── 删除前/后 ───」对比，被删除的行标记（被删除）。写回时 \\r\\n/\\r 自动统一为 \\n。",
+      "description": "删除文件中指定行区间的文本。修改前自动备份。返回时显示 +/- diff 格式预览（前一行上下文 + 被删行 + 后一行上下文），不带 + 组。写回时 \\r\\n/\\r 自动统一为 \\n。",
       "parameters": {
         "properties": {
           "path": {
@@ -706,7 +706,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_copy",
-      "description": "复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。目标已存在时需设置 overwrite=True 才能覆盖。",
+      "description": "复制文件或目录（含子目录递归）。复制目录时使用 copytree 递归复制，复制文件时使用 copy2 保留元数据。目标目录不存在时自动创建。目标已存在时需设置 overwrite=True 才能覆盖——覆盖目录时，会先删除目标目录再重新复制（即替换整个目录，而非合并内容）；覆盖文件时直接覆盖。",
       "parameters": {
         "properties": {
           "src": {
@@ -719,7 +719,7 @@
           },
           "overwrite": {
             "default": false,
-            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标（目录会先 rmtree 再 copytree）。",
+            "description": "覆盖模式。False=目标已存在时报错不覆盖（默认），True=覆盖已存在的目标——覆盖目录时替换整个目录而非合并内容，覆盖文件时直接覆盖。",
             "type": "boolean"
           }
         },
@@ -986,7 +986,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_replace_bytes",
-      "description": "在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量）。",
+      "description": "在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量），CSV 格式。",
       "parameters": {
         "properties": {
           "path": {
@@ -998,7 +998,7 @@
             "type": "string"
           },
           "new_bytes": {
-            "description": "替换成的字节序列（hex 字符串）。可以与 old_bytes 长度不同——替换后文件大小会变。",
+            "description": "替换成的字节序列（hex 字符串）。空字符串表示删除匹配内容。可以与 old_bytes 长度不同——替换后文件大小会变。",
             "type": "string"
           },
           "count": {

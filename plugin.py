@@ -60,6 +60,8 @@ class FileToolsPlugin:
             tool_func=file_tools_listdir,
             description="列出目录内容，支持递归和自定义列。",
             icon="📂",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -67,6 +69,8 @@ class FileToolsPlugin:
             tool_func=file_tools_info,
             description="查看文件/目录的详细元数据（JSON）。",
             icon="ℹ️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -74,6 +78,8 @@ class FileToolsPlugin:
             tool_func=file_tools_guess,
             description="猜测文件类型和编码（JSON）。",
             icon="🔍",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -81,6 +87,8 @@ class FileToolsPlugin:
             tool_func=file_tools_diff,
             description="对比两个文件差异，返回 unified diff。",
             icon="📋",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -88,6 +96,8 @@ class FileToolsPlugin:
             tool_func=file_tools_history,
             description="查看文件的历史版本列表（JSON）。",
             icon="🕐",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -97,6 +107,8 @@ class FileToolsPlugin:
             tool_func=file_tools_read_lines,
             description="按行读取文本文件，支持行号显示和截断提示。",
             icon="📖",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -104,6 +116,8 @@ class FileToolsPlugin:
             tool_func=file_tools_read_block,
             description="读取文本文件的矩形区域（行+列范围）。",
             icon="🔲",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -111,6 +125,8 @@ class FileToolsPlugin:
             tool_func=file_tools_regex,
             description="正则搜索文件内容，支持跨行匹配，返回 JSON。",
             icon="🔎",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -120,6 +136,8 @@ class FileToolsPlugin:
             tool_func=file_tools_append,
             description="追加内容到文件末尾（自动备份）。",
             icon="➕",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -127,6 +145,8 @@ class FileToolsPlugin:
             tool_func=file_tools_replace_lines,
             description="整段替换文件中的指定行区间，行数可增减（自动备份）。",
             icon="🔀",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -134,6 +154,8 @@ class FileToolsPlugin:
             tool_func=file_tools_insert_lines,
             description="在指定行号前插入新内容（自动备份）。",
             icon="📄",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -141,6 +163,8 @@ class FileToolsPlugin:
             tool_func=file_tools_delete_lines,
             description="删除文件中的指定行区间（自动备份）。",
             icon="✂️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -148,6 +172,8 @@ class FileToolsPlugin:
             tool_func=file_tools_replace,
             description="精确子串查找替换，支持跨行（自动备份，支持 dry_run）。",
             icon="🔄",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -155,6 +181,8 @@ class FileToolsPlugin:
             tool_func=file_tools_regex_replace,
             description="正则替换文件内容，支持跨行匹配（自动备份，支持 dry_run）。",
             icon="✨",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -162,6 +190,8 @@ class FileToolsPlugin:
             tool_func=file_tools_indent_lines,
             description="调整行首缩进（expand/shrink）。自动备份。",
             icon="📐",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -171,6 +201,8 @@ class FileToolsPlugin:
             tool_func=file_tools_copy,
             description="复制文件或目录，支持目录融合（源目录→已存在目标目录时合并内容）。目标目录不存在时自动创建。",
             icon="📋",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -178,6 +210,8 @@ class FileToolsPlugin:
             tool_func=file_tools_move,
             description="移动或重命名文件/目录，支持目录融合（源目录→已存在目标目录时合并内容）和文件放入目录。",
             icon="📦",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -185,6 +219,8 @@ class FileToolsPlugin:
             tool_func=file_tools_trash,
             description="安全删除到回收站（可恢复）。依赖 pytrash。",
             icon="🗑️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -192,6 +228,8 @@ class FileToolsPlugin:
             tool_func=file_tools_trash_undo,
             description="从回收站恢复最近删除的文件。依赖 pytrash。",
             icon="♻️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -199,6 +237,8 @@ class FileToolsPlugin:
             tool_func=file_tools_mkdir,
             description="创建目录，自动创建所有父目录。",
             icon="📁",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -208,6 +248,8 @@ class FileToolsPlugin:
             tool_func=file_tools_undo,
             description="恢复文件到历史版本（配合 history 使用）。",
             icon="⏪",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -217,6 +259,8 @@ class FileToolsPlugin:
             tool_func=file_tools_write,
             description="写入文件内容（原子写入，已存在时自动备份）。",
             icon="✏️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 
@@ -228,6 +272,8 @@ class FileToolsPlugin:
             tool_func=file_tools_read_bytes,
             description="读取二进制文件指定字节范围，返回 hex。",
             icon="🔢",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -235,6 +281,8 @@ class FileToolsPlugin:
             tool_func=file_tools_write_bytes,
             description="写入二进制文件，支持全量/部分覆盖。",
             icon="✏️",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -242,6 +290,8 @@ class FileToolsPlugin:
             tool_func=file_tools_find_bytes,
             description="在二进制文件中查找字节序列。",
             icon="🔎",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
         api.register_tool(
@@ -249,6 +299,8 @@ class FileToolsPlugin:
             tool_func=file_tools_replace_bytes,
             description="在二进制文件中查找并替换字节序列。",
             icon="🔄",
+            tool_type="file",
+            target_param="path",
             enabled=True,
         )
 

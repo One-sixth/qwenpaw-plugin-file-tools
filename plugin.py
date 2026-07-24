@@ -265,8 +265,6 @@ class FileToolsPlugin:
             enabled=True,
         )
 
-        logger.info("✓ File Tools 插件注册完成（25 个工具）")
-
         # ── 字节级工具 ──
         api.register_tool(
             tool_name="file_tools_read_bytes",
@@ -306,15 +304,14 @@ class FileToolsPlugin:
         )
 
 
-plugin = FileToolsPlugin()
-
-# ── 启动钩子：清理过期备份 ──
+        # ── 启动钩子：清理过期备份 ──
         api.register_startup_hook(
             "cleanup_old_backups",
             self._startup_cleanup,
             priority=90,
         )
 
+        logger.info("✓ File Tools 插件注册完成（26 个工具）")
 
     def _startup_cleanup(self) -> None:
         """启动时清理超过 30 天的旧备份文件。"""
@@ -322,3 +319,6 @@ plugin = FileToolsPlugin()
             cleanup_old_backups(days=30)
         except Exception as e:
             logger.warning("启动清理备份时出错: %s", e)
+
+
+plugin = FileToolsPlugin()

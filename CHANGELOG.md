@@ -1,5 +1,25 @@
 # 更新日志
 
+## v1.2.0 (2026-07-24)
+
+> 治理兼容 + ToolChunk 结构化返回 + 备份重构 + 自动清理
+
+### 变更
+- **治理系统兼容**：全部 26 个 `register_tool()` 调用新增 `tool_type="file"`、`target_param="path"` 参数，解决 QwenPaw 治理系统因默认 `tool_type="network"` 无法识别工具类型导致的拦截问题
+- **ToolChunk 结构化返回**：全部 26 个工具返回从纯字符串改为 `ToolChunk(is_last=True, state=SUCCESS/ERROR, content=[TextBlock(...)])`，与 QwenPaw 内置工具一致
+- **备份路径简化**：`{ws}/sessions/console/default_default.json_file_tools/` → `{ws}/file_tools_data/`
+- **启动自动清理**：注册 `register_startup_hook`，每次 QwenPaw 启动时自动清理超过 30 天的旧备份
+- **原子写入**：`files.json` 写入改为 `.temp` + `os.replace` 原子写入，防止写入中断导致文件损坏
+
+### 修复
+- 启动钩子注册代码位置错误（在 `register()` 方法外调用，永不执行），已移入方法内
+- 插件注册日志误报「25 个工具」，修正为「26 个工具」
+- `plugin = FileToolsPlugin()` 实例化位置错误，已移至文件末尾
+
+### 测试
+- 新增 4 个 `cleanup_old_backups` 测试（空目录、过期清理、空目录删除、files.json 清理）
+- 全量 365 个测试全部通过
+
 ## v1.1.0 (2026-07-22)
 
 > 字节级操作 + 缩进工具 + 跨行正则 + 安全增强

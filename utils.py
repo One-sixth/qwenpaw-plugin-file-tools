@@ -196,13 +196,19 @@ def make_success(text: str) -> "ToolChunk":
     )
 
 
-def make_error(text: str) -> "ToolChunk":
-    """构建错误结果。
+def make_error(text: str, reason: str = "", suggestion: str = "") -> "ToolChunk":
+    """构建错误结果。支持两种调用方式：
+    - make_error("错误文本")
+    - make_error("操作名", "原因", "建议")  # 自动调用 format_error 拼接
 
     Args:
-        text: 错误提示文本
+        text: 错误文本，或 format_error 的 action 参数
+        reason: 当提供时，与 text 一起传给 format_error
+        suggestion: 当提供时，传给 format_error
     """
     _import_toolchunk()
+    if reason:
+        text = format_error(text, reason, suggestion)
     return _ToolChunk(
         is_last=True,
         state=_ToolResultState.ERROR,
@@ -325,10 +331,10 @@ def guess_file_type(file_path: str) -> Dict[str, Any]:
 
 
 def get_session_dir() -> str:
-    """获取当前会话的 _file_tools 备份目录根路径。
+    """获取 file_tools 数据目录根路径（用于存放历史备份等数据）。
 
     Returns:
-        str: 备份目录根路径
+        str: 数据目录根路径
 
     Raises:
         RuntimeError: 无法获取工作区路径时抛出，附带联系维护者的提示
@@ -338,9 +344,7 @@ def get_session_dir() -> str:
         raise RuntimeError(
             "无法获取 QwenPaw 工作区目录路径，无法确定备份文件存放位置。"
         )
-    session_path = os.path.join(ws, "sessions", "console", "default_default.json")
-    backup_root = session_path + "_file_tools"
-    return backup_root
+    return os.path.join(ws, "file_tools_data")
 
 
 # ── 路径编码（用于历史备份） ─────────────────────────────

@@ -14,6 +14,8 @@ try:
         format_backup_info,
         format_csv,
         format_error,
+        make_error,
+        make_success,
         format_hex,
         parse_hex,
         resolve_path,
@@ -24,6 +26,8 @@ except ImportError:
         format_backup_info,
         format_csv,
         format_error,
+        make_error,
+        make_success,
         format_hex,
         parse_hex,
         resolve_path,
@@ -54,33 +58,33 @@ def file_tools_read_bytes(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("读取", f"文件「{resolved}」不存在")
+        return make_error("读取", f"文件「{resolved}」不存在")
 
     if offset < 0:
-        return format_error("读取", f"偏移量 {offset} 不能为负数")
+        return make_error("读取", f"偏移量 {offset} 不能为负数")
 
     if length < 0:
-        return format_error("读取", f"读取长度 {length} 不能为负数")
+        return make_error("读取", f"读取长度 {length} 不能为负数")
 
     if length > _READ_MAX_LENGTH:
-        return format_error(
+        return make_error(
             "读取",
             f"一次最多读取 {_READ_MAX_LENGTH} 字节（请求 {length} 字节）",
             f"请减少 length 参数或分多次读取（用 offset 参数调整起始位置）。",
         )
 
     if group_size == 0:
-        return format_error(
+        return make_error(
             "读取", "group_size 不能为 0", "请使用 -1（不分组）或正数（每行字节数）。"
         )
 
     try:
         file_size = os.path.getsize(resolved)
     except OSError as e:
-        return format_error("读取", f"获取文件大小时出错：{e}")
+        return make_error("读取", f"获取文件大小时出错：{e}")
 
     if offset >= file_size:
-        return format_error(
+        return make_error(
             "读取", f"偏移量 {offset} 超出文件范围（文件总大小 {file_size} 字节）"
         )
 
@@ -89,12 +93,12 @@ def file_tools_read_bytes(
             f.seek(offset)
             data = f.read(length)
     except OSError as e:
-        return format_error("读取", f"读取文件时出错：{e}")
+        return make_error("读取", f"读取文件时出错：{e}")
 
     actual_length = len(data)
     hex_content = format_hex(data, group_size)
 
-    return (
+    return make_success(
         f"读取成功：共 {actual_length} 字节（偏移量 {offset}，文件总大小 {file_size} 字节）。\n"
         f"{hex_content}"
     )
@@ -123,7 +127,7 @@ def file_tools_write_bytes(
     try:
         data = parse_hex(content)
     except ValueError as e:
-        return format_error("写入", f"hex 格式错误：{e}")
+        return make_error("写入", f"hex 格式错误：{e}")
 
     expected_bytes = len(data)
 
@@ -133,7 +137,7 @@ def file_tools_write_bytes(
         if os.path.isfile(resolved) and not skip_backup:
             history_number = backup_file(resolved)
             if history_number is None:
-                return format_error(
+                return make_error(
                     "写入",
                     "备份原文件失败",
                     "请暂停执行，向用户询问是否可以不备份。"
@@ -152,7 +156,7 @@ def file_tools_write_bytes(
                 os.unlink(tmp_path)
             except Exception:
                 pass
-            return format_error("写入", f"写入文件时出错：{e}")
+            return make_error("写入", f"写入文件时出错：{e}")
 
         # 构建返回消息
         result = _build_write_full_result(actual, expected_bytes, history_number, resolved)
@@ -161,12 +165,12 @@ def file_tools_write_bytes(
     else:
         # ── 部分覆盖（offset >= 0）──
         if offset < 0:
-            return format_error(
+            return make_error(
                 "写入", f"偏移量 {offset} 不合法", "偏移量必须 >= 0，或使用 -1 进行全量覆盖。"
             )
 
         if not os.path.isfile(resolved):
-            return format_error(
+            return make_error(
                 "写入", f"文件「{resolved}」不存在", "部分覆盖仅适用于已有文件，请先创建文件或使用全量覆盖。"
             )
 
@@ -175,16 +179,16 @@ def file_tools_write_bytes(
                 f.seek(offset)
                 actual = f.write(data)
         except OSError as e:
-            return format_error("写入", f"写入文件时出错：{e}")
+            return make_error("写入", f"写入文件时出错：{e}")
 
         if actual < expected_bytes:
-            return (
+            return make_success((
                 f"写入成功：从偏移量 {offset} 处写入 {actual} 字节"
                 f"（预计写入 {expected_bytes} 字节），"
                 f"部分字节写入失败，可能是空间不足或触发配额限制。"
-            )
+            ))
         else:
-            return f"写入成功：从偏移量 {offset} 处写入 {actual} 字节。"
+            return make_success(f"写入成功：从偏移量 {offset} 处写入 {actual} 字节。")
 
 
 def _build_write_full_result(
@@ -206,7 +210,7 @@ def _build_write_full_result(
     if history_number is not None:
         msg += f"\n{format_backup_info(resolved, history_number)}"
 
-    return msg
+    return make_success(msg)
 
 
 # ── 3. file_tools_find_bytes ──────────────────────────────
@@ -229,30 +233,30 @@ def file_tools_find_bytes(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("查找", f"文件「{resolved}」不存在")
+        return make_error("查找", f"文件「{resolved}」不存在")
 
     if offset < 0:
-        return format_error("查找", f"偏移量 {offset} 不能为负数")
+        return make_error("查找", f"偏移量 {offset} 不能为负数")
 
     if count == 0:
-        return format_error("查找", "count 不能为 0", "请使用 -1（全部匹配）或正数（限制匹配数）。")
+        return make_error("查找", "count 不能为 0", "请使用 -1（全部匹配）或正数（限制匹配数）。")
 
     # 解析 pattern
     try:
         pattern_bytes = parse_hex(pattern)
     except ValueError as e:
-        return format_error("查找", f"hex 格式错误：{e}")
+        return make_error("查找", f"hex 格式错误：{e}")
 
     if not pattern_bytes:
-        return format_error("查找", "pattern 不能为空，请输入要查找的字节序列")
+        return make_error("查找", "pattern 不能为空，请输入要查找的字节序列")
 
     try:
         file_size = os.path.getsize(resolved)
     except OSError as e:
-        return format_error("查找", f"获取文件大小时出错：{e}")
+        return make_error("查找", f"获取文件大小时出错：{e}")
 
     if offset >= file_size:
-        return format_error(
+        return make_error(
             "查找", f"偏移量 {offset} 超出文件范围（文件总大小 {file_size} 字节）"
         )
 
@@ -261,7 +265,7 @@ def file_tools_find_bytes(
         with open(resolved, "rb") as f:
             data = f.read()
     except OSError as e:
-        return format_error("查找", f"读取文件时出错：{e}")
+        return make_error("查找", f"读取文件时出错：{e}")
 
     matches = _find_all(data, pattern_bytes, offset)
 
@@ -270,11 +274,11 @@ def file_tools_find_bytes(
         matches = matches[:count]
 
     if not matches:
-        return "在文件中未找到匹配的字节序列。"
+        return make_success("在文件中未找到匹配的字节序列。")
 
     # 返回 CSV 格式
     rows = [{"offset": pos} for pos in matches]
-    return format_csv(rows, fieldnames=["offset"])
+    return make_success(format_csv(rows, fieldnames=["offset"]))
 
 
 def _find_all(data: bytes, pattern: bytes, base_offset: int) -> list[int]:
@@ -314,33 +318,33 @@ def file_tools_replace_bytes(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("替换", f"文件「{resolved}」不存在")
+        return make_error("替换", f"文件「{resolved}」不存在")
 
     if offset < 0:
-        return format_error("替换", f"偏移量 {offset} 不能为负数")
+        return make_error("替换", f"偏移量 {offset} 不能为负数")
 
     if count == 0:
-        return format_error("替换", "count 不能为 0", "请使用 -1（全部替换）或正数（限制替换次数）。")
+        return make_error("替换", "count 不能为 0", "请使用 -1（全部替换）或正数（限制替换次数）。")
 
     if not old_bytes.strip():
-        return format_error("替换", "old_bytes 不能为空")
+        return make_error("替换", "old_bytes 不能为空")
 
     # 解析 hex
     try:
         old_data = parse_hex(old_bytes)
         new_data = parse_hex(new_bytes)
     except ValueError as e:
-        return format_error("替换", f"hex 格式错误：{e}")
+        return make_error("替换", f"hex 格式错误：{e}")
 
     if not old_data:
-        return format_error("替换", "old_bytes 不能为空，请输入要查找的字节序列")
+        return make_error("替换", "old_bytes 不能为空，请输入要查找的字节序列")
 
     # 备份
     history_number = None
     if not skip_backup:
         history_number = backup_file(resolved)
         if history_number is None:
-            return format_error(
+            return make_error(
                 "替换",
                 "备份原文件失败",
                 "请暂停执行，向用户询问是否可以不备份。"
@@ -355,12 +359,12 @@ def file_tools_replace_bytes(
         with open(resolved, "rb") as f:
             data = f.read()
     except OSError as e:
-        return format_error("替换", f"读取文件时出错：{e}")
+        return make_error("替换", f"读取文件时出错：{e}")
 
     # 查找所有匹配
     matches = _find_all(data, old_data, offset)
     if not matches:
-        return "在文件中未找到匹配的字节序列。"
+        return make_success("在文件中未找到匹配的字节序列。")
 
     # 应用 count 限制
     if count > 0:
@@ -386,7 +390,7 @@ def file_tools_replace_bytes(
             os.unlink(tmp_path)
         except Exception:
             pass
-        return format_error("替换", f"写入文件时出错：{e}")
+        return make_error("替换", f"写入文件时出错：{e}")
 
     # 构建返回消息
     positions = [{"offset": pos} for pos in reversed(replaced_positions)]
@@ -396,4 +400,4 @@ def file_tools_replace_bytes(
     if history_number is not None:
         msg += f"\n{format_backup_info(resolved, history_number)}"
 
-    return msg
+    return make_success(msg)

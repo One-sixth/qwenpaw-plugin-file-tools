@@ -13,6 +13,8 @@ try:
     from ..utils import (
         format_backup_info,
         format_error,
+        make_error,
+        make_success,
         normalize_newlines,
         resolve_path,
     )
@@ -21,6 +23,8 @@ except ImportError:
     from utils import (
         format_backup_info,
         format_error,
+        make_error,
+        make_success,
         normalize_newlines,
         resolve_path,
     )
@@ -46,7 +50,7 @@ def file_tools_write(
 
     # line_separator 运行时校验（schema 层已拦截，此处双重保障）
     if line_separator not in ("auto", "\\n", "\\r\\n"):
-        return format_error("写入", f"line_separator 参数值 {line_separator} 不合法，仅支持 auto、\\n、\\r\\n")
+        return make_error("写入", f"line_separator 参数值 {line_separator} 不合法，仅支持 auto、\\n、\\r\\n")
 
     # 统一换行符 \\r\\n/\\r → \\n
     normalized = normalize_newlines(content)
@@ -65,7 +69,7 @@ def file_tools_write(
         history_number = backup_file(resolved)
         if history_number is None:
             error_detail = get_last_backup_error() or "未知原因"
-            return format_error(
+            return make_error(
                 "写入",
                 f"备份原文件失败（{error_detail}）",
             )
@@ -90,13 +94,13 @@ def file_tools_write(
             os.unlink(tmp_path)
         except Exception:
             pass
-        return format_error("写入", f"写入文件时出错：{e}")
+        return make_error("写入", f"写入文件时出错：{e}")
 
     # 构建返回消息
     if history_number is not None:
-        return (
+        return make_success(
             f"成功写入文件，共 {char_count} 个字符（{line_count} 行）。\n"
             f"{format_backup_info(resolved, history_number)}"
         )
     else:
-        return f"成功写入文件，共 {char_count} 个字符（{line_count} 行）。"
+        return make_success(f"成功写入文件，共 {char_count} 个字符（{line_count} 行）。")

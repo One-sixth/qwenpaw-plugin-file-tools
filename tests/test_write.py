@@ -17,23 +17,23 @@ class TestWriteNewFile:
     def test_create_new(self, tmp_dir):
         path = os.path.join(tmp_dir, "new.txt")
         result = file_tools_write(path, "hello\nworld")
-        assert "成功写入文件" in result
-        assert "共 11 个字符" in result
-        assert "2 行" in result
+        assert "成功写入文件" in result.content[0].text
+        assert "共 11 个字符" in result.content[0].text
+        assert "2 行" in result.content[0].text
         assert _read_file(path) == "hello\nworld"
 
     def test_create_new_empty(self, tmp_dir):
         path = os.path.join(tmp_dir, "empty.txt")
         result = file_tools_write(path, "")
-        assert "成功写入文件" in result
-        assert "0 个字符" in result
-        assert "0 行" in result
+        assert "成功写入文件" in result.content[0].text
+        assert "0 个字符" in result.content[0].text
+        assert "0 行" in result.content[0].text
         assert _read_file(path) == ""
 
     def test_create_new_chinese(self, tmp_dir):
         path = os.path.join(tmp_dir, "chinese.txt")
         result = file_tools_write(path, "你好世界")
-        assert "成功写入文件" in result
+        assert "成功写入文件" in result.content[0].text
         assert _read_file(path) == "你好世界"
 
     def test_new_file_no_backup(self, tmp_dir):
@@ -46,7 +46,7 @@ class TestWriteNewFile:
     def test_create_new_crlf(self, tmp_dir):
         path = os.path.join(tmp_dir, "crlf.txt")
         result = file_tools_write(path, "line1\nline2", line_separator="\\r\\n")
-        assert "成功写入文件" in result
+        assert "成功写入文件" in result.content[0].text
         with open(path, "rb") as f:
             raw = f.read()
         assert raw == b"line1\r\nline2"
@@ -60,8 +60,8 @@ class TestWriteOverwrite:
         with open(path, "w", encoding="utf-8") as f:
             f.write("old content")
         result = file_tools_write(path, "new content")
-        assert "成功写入文件" in result
-        assert "历史号" in result
+        assert "成功写入文件" in result.content[0].text
+        assert "历史号" in result.content[0].text
         assert _read_file(path) == "new content"
 
     def test_overwrite_backup_created(self, tmp_dir):
@@ -89,8 +89,8 @@ class TestWriteOverwrite:
         with open(path, "w", encoding="utf-8") as f:
             f.write("short")
         result = file_tools_write(path, "a" * 1000)
-        assert "成功写入文件" in result
-        assert "1000 个字符" in result
+        assert "成功写入文件" in result.content[0].text
+        assert "1000 个字符" in result.content[0].text
         assert len(_read_file(path)) == 1000
 
     def test_overwrite_empty_content(self, tmp_dir):
@@ -99,7 +99,7 @@ class TestWriteOverwrite:
         with open(path, "w", encoding="utf-8") as f:
             f.write("old")
         result = file_tools_write(path, "")
-        assert "成功写入文件" in result
+        assert "成功写入文件" in result.content[0].text
         assert _read_file(path) == ""
 
 
@@ -152,11 +152,11 @@ class TestWriteLineSeparator:
         """line_separator 传非法值应报错"""
         path = os.path.join(tmp_dir, "bad.txt")
         result = file_tools_write(path, "content", line_separator="invalid")
-        assert "失败" in result
+        assert "失败" in result.content[0].text
     """测试错误处理。"""
 
     def test_invalid_path(self):
         """路径不存在时的行为（父目录不存在）。"""
         result = file_tools_write("/nonexistent_dir/file.txt", "content")
         # 应该报错
-        assert "失败" in result or "出错" in result
+        assert "失败" in result.content[0].text or "出错" in result.content[0].text

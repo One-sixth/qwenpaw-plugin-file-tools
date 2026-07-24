@@ -17,32 +17,32 @@ class TestCopy:
     def test_copy_file(self, tmp_file, tmp_dir):
         dst = os.path.join(tmp_dir, "copied.txt")
         result = file_tools_copy(tmp_file, dst)
-        assert "已复制" in result
+        assert "已复制" in result.content[0].text
         assert os.path.isfile(dst)
 
     def test_copy_nonexistent(self, tmp_dir):
         result = file_tools_copy("/nonexistent_xyz", os.path.join(tmp_dir, "dest.txt"))
-        assert "失败" in result
+        assert "失败" in result.content[0].text
 
     def test_copy_overwrite_false(self, tmp_file, tmp_dir):
         dst = os.path.join(tmp_dir, "dest.txt")
         with open(dst, "w") as f:
             f.write("existing")
         result = file_tools_copy(tmp_file, dst, overwrite=False)
-        assert "失败" in result
-        assert "已存在" in result
+        assert "失败" in result.content[0].text
+        assert "已存在" in result.content[0].text
 
     def test_copy_overwrite_true(self, tmp_file, tmp_dir):
         dst = os.path.join(tmp_dir, "dest.txt")
         with open(dst, "w") as f:
             f.write("existing")
         result = file_tools_copy(tmp_file, dst, overwrite=True)
-        assert "已复制" in result
+        assert "已复制" in result.content[0].text
 
     def test_copy_directory(self, subdir_structure, tmp_dir):
         dst = os.path.join(tmp_dir, "copied_dir")
         result = file_tools_copy(subdir_structure, dst)
-        assert "已复制" in result
+        assert "已复制" in result.content[0].text
         assert os.path.isdir(dst)
 
     def test_copy_file_content(self, tmp_file, tmp_dir):
@@ -64,7 +64,7 @@ class TestCopy:
         """复制到不存在的目录应自动创建"""
         dst = os.path.join(tmp_dir, "new_sub", "nested", "file.txt")
         result = file_tools_copy(tmp_file, dst)
-        assert "已复制" in result
+        assert "已复制" in result.content[0].text
         assert os.path.isfile(dst)
         assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
 
@@ -78,7 +78,7 @@ class TestCopy:
         open(os.path.join(src_dir, "a.txt"), "w").close()
         open(os.path.join(dst_dir, "b.txt"), "w").close()
         result = file_tools_move(src_dir, dst_dir, overwrite=True)
-        assert "融合" in result
+        assert "融合" in result.content[0].text
         assert not os.path.isdir(src_dir)  # 源目录已被删除
         assert os.path.isfile(os.path.join(dst_dir, "a.txt"))  # 融合过来了
         assert os.path.isfile(os.path.join(dst_dir, "b.txt"))  # 原有的还在
@@ -92,14 +92,14 @@ class TestCopy:
         open(os.path.join(src_dir, "same.txt"), "w").close()
         open(os.path.join(dst_dir, "same.txt"), "w").close()
         result = file_tools_move(src_dir, dst_dir, overwrite=False)
-        assert "失败" in result
-        assert "已存在" in result
+        assert "失败" in result.content[0].text
+        assert "已存在" in result.content[0].text
 
     def test_copy_src_eq_dst(self, tmp_file):
         """src==dst 时应返回提示而非崩溃"""
         result = file_tools_copy(tmp_file, tmp_file)
-        assert "相同" in result
-        assert "无需操作" in result
+        assert "相同" in result.content[0].text
+        assert "无需操作" in result.content[0].text
 
     def test_copy_dir_merge(self, tmp_dir):
         """目录→已存在目录应融合内容。"""
@@ -110,7 +110,7 @@ class TestCopy:
         open(os.path.join(src_dir, "a.txt"), "w").close()
         open(os.path.join(dst_dir, "b.txt"), "w").close()
         result = file_tools_copy(src_dir, dst_dir, overwrite=True)
-        assert "融合" in result
+        assert "融合" in result.content[0].text
         assert os.path.isfile(os.path.join(dst_dir, "a.txt"))
         assert os.path.isfile(os.path.join(dst_dir, "b.txt"))
 
@@ -122,7 +122,7 @@ class TestCopy:
         dst_dir = os.path.join(tmp_dir, "sub_dir")
         os.makedirs(dst_dir)
         result = file_tools_copy(src, dst_dir)
-        assert "已复制" in result
+        assert "已复制" in result.content[0].text
         assert os.path.isfile(os.path.join(dst_dir, "src_file.txt"))
 
     def test_move_file_to_dir(self, tmp_dir):
@@ -133,7 +133,7 @@ class TestCopy:
         dst_dir = os.path.join(tmp_dir, "sub_dir")
         os.makedirs(dst_dir)
         result = file_tools_move(src, dst_dir)
-        assert "已移动" in result
+        assert "已移动" in result.content[0].text
         assert os.path.isfile(os.path.join(dst_dir, "src_file.txt"))
         assert not os.path.isfile(src)
 
@@ -142,13 +142,13 @@ class TestMove:
     def test_move_file(self, tmp_file, tmp_dir):
         dst = os.path.join(tmp_dir, "moved.txt")
         result = file_tools_move(tmp_file, dst)
-        assert "已移动" in result
+        assert "已移动" in result.content[0].text
         assert os.path.isfile(dst)
         assert not os.path.isfile(tmp_file)
 
     def test_move_nonexistent(self, tmp_dir):
         result = file_tools_move("/nonexistent_xyz", os.path.join(tmp_dir, "dest.txt"))
-        assert "失败" in result
+        assert "失败" in result.content[0].text
 
     def test_move_overwrite_false(self, tmp_dir):
         src = os.path.join(tmp_dir, "src.txt")
@@ -158,7 +158,7 @@ class TestMove:
         with open(dst, "w") as f:
             f.write("dest")
         result = file_tools_move(src, dst, overwrite=False)
-        assert "失败" in result
+        assert "失败" in result.content[0].text
 
     def test_move_overwrite_true(self, tmp_dir):
         src = os.path.join(tmp_dir, "src.txt")
@@ -168,7 +168,7 @@ class TestMove:
         with open(dst, "w") as f:
             f.write("dest")
         result = file_tools_move(src, dst, overwrite=True)
-        assert "已移动" in result
+        assert "已移动" in result.content[0].text
         assert os.path.isfile(dst)
 
     def test_rename(self, tmp_dir):
@@ -186,14 +186,14 @@ class TestMove:
         with open(src, "w") as f:
             f.write("test")
         result = file_tools_move(src, src)
-        assert "相同" in result
-        assert "无需操作" in result
+        assert "相同" in result.content[0].text
+        assert "无需操作" in result.content[0].text
 
     def test_move_to_nonexistent_dir(self, tmp_file, tmp_dir):
         """移动到不存在的目录应自动创建（与 copy 行为一致）"""
         dst = os.path.join(tmp_dir, "new_sub", "nested", "moved.txt")
         result = file_tools_move(tmp_file, dst)
-        assert "已移动" in result
+        assert "已移动" in result.content[0].text
         assert os.path.isfile(dst)
         assert os.path.isdir(os.path.join(tmp_dir, "new_sub", "nested"))
 
@@ -207,7 +207,7 @@ class TestMove:
         open(os.path.join(src_dir, "a.txt"), "w").close()
         open(os.path.join(dst_dir, "b.txt"), "w").close()
         result = file_tools_move(src_dir, dst_dir, overwrite=True)
-        assert "融合" in result
+        assert "融合" in result.content[0].text
         assert not os.path.isdir(src_dir)  # 源目录已被删除
         assert os.path.isfile(os.path.join(dst_dir, "a.txt"))  # 融合过来了
         assert os.path.isfile(os.path.join(dst_dir, "b.txt"))  # 原有的还在
@@ -221,48 +221,48 @@ class TestMove:
         open(os.path.join(src_dir, "same.txt"), "w").close()
         open(os.path.join(dst_dir, "same.txt"), "w").close()
         result = file_tools_move(src_dir, dst_dir, overwrite=False)
-        assert "失败" in result
-        assert "已存在" in result
+        assert "失败" in result.content[0].text
+        assert "已存在" in result.content[0].text
 
 
 class TestMkdir:
     def test_create(self, tmp_dir):
         new_dir = os.path.join(tmp_dir, "new_dir")
         result = file_tools_mkdir(new_dir)
-        assert "已创建目录" in result
+        assert "已创建目录" in result.content[0].text
         assert os.path.isdir(new_dir)
 
     def test_exists(self, tmp_dir):
         result = file_tools_mkdir(tmp_dir)
-        assert "已存在" in result
+        assert "已存在" in result.content[0].text
 
     def test_nested(self, tmp_dir):
         nested = os.path.join(tmp_dir, "a", "b", "c")
         result = file_tools_mkdir(nested)
-        assert "已创建目录" in result
+        assert "已创建目录" in result.content[0].text
         assert os.path.isdir(nested)
 
     def test_invalid_path(self):
         result = file_tools_mkdir("")
-        assert "失败" in result
-        assert "不能为空" in result
+        assert "失败" in result.content[0].text
+        assert "不能为空" in result.content[0].text
 
 
 class TestTrash:
     def test_trash_file(self, tmp_file):
         assert os.path.isfile(tmp_file)
         result = file_tools_trash(tmp_file)
-        assert "放入回收站" in result or "失败" in result
+        assert "放入回收站" in result.content[0].text or "失败" in result.content[0].text
 
     def test_trash_nonexistent(self):
         result = file_tools_trash("/nonexistent_xyz")
-        assert "失败" in result
+        assert "失败" in result.content[0].text
 
     def test_trash_directory(self, tmp_dir):
         result = file_tools_trash(tmp_dir)
-        assert "放入回收站" in result or "失败" in result
+        assert "放入回收站" in result.content[0].text or "失败" in result.content[0].text
 
     def test_trash_undo_no_entry(self):
         result = file_tools_trash_undo("/nonexistent_path_xyz")
-        assert "失败" in result
-        assert "回收站中未找到" in result
+        assert "失败" in result.content[0].text
+        assert "回收站中未找到" in result.content[0].text

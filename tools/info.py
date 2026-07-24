@@ -284,23 +284,23 @@ def file_tools_guess(
     resolved = resolve_path(path)
 
     if not os.path.exists(resolved):
-        return json.dumps({
+        return make_success(json.dumps({
             "path": resolved,
             "error": "文件不存在",
-        }, ensure_ascii=False)
+        }, ensure_ascii=False))
 
     if os.path.isdir(resolved):
-        return json.dumps({
+        return make_success(json.dumps({
             "path": resolved,
             "type": "directory",
             "subtype": "directory",
             "encoding": None,
             "confidence": 1.0,
-        }, ensure_ascii=False)
+        }, ensure_ascii=False))
 
     result = guess_file_type(resolved)
     result["path"] = resolved
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return make_success(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 # ── 4. file_tools_diff ────────────────────────────────────
@@ -326,15 +326,15 @@ def file_tools_diff(
     resolved_b = resolve_path(path_b)
 
     if not os.path.isfile(resolved_a):
-        return f"对比失败，因为找不到旧文件「{resolved_a}」。请确认路径是否正确。"
+        return make_error(f"对比失败，因为找不到旧文件「{resolved_a}」。请确认路径是否正确。")
     if not os.path.isfile(resolved_b):
-        return f"对比失败，因为找不到新文件「{resolved_b}」。请确认路径是否正确。"
+        return make_error(f"对比失败，因为找不到新文件「{resolved_b}」。请确认路径是否正确。")
 
     try:
         content_a, _ = read_file_content(resolved_a)
         content_b, _ = read_file_content(resolved_b)
     except Exception as e:
-        return f"对比失败，因为读取文件时出错：{e}。"
+        return make_error(f"对比失败，因为读取文件时出错：{e}。")
 
     lines_a = content_a.splitlines(keepends=True)
     lines_b = content_b.splitlines(keepends=True)
@@ -366,16 +366,16 @@ def file_tools_diff(
         hunks.append(current_hunk)
 
     if not hunks:
-        return "文件相同，没有差异。"
+        return make_success("文件相同，没有差异。")
 
     # 分页
     total_hunks = len(hunks)
     if start < 1:
-        return format_error("对比", f"start 参数值 {start} 不合法。start 表示「从第几个 hunk 开始显示」，最小值为 1")
+        return make_error("对比", f"start 参数值 {start} 不合法。start 表示「从第几个 hunk 开始显示」，最小值为 1")
     if count < 1:
-        return format_error("对比", f"count 参数值 {count} 不合法。count 表示「最多显示多少个差异块」，最小值为 1")
+        return make_error("对比", f"count 参数值 {count} 不合法。count 表示「最多显示多少个差异块」，最小值为 1")
     if start > total_hunks:
-        return format_error("对比", f"start 参数值 {start} 超出差异块总数（共 {total_hunks} 个）。start 取值范围 1~{total_hunks}")
+        return make_error("对比", f"start 参数值 {start} 超出差异块总数（共 {total_hunks} 个）。start 取值范围 1~{total_hunks}")
     end_idx = min(start - 1 + count, total_hunks)
     selected = hunks[start - 1 : end_idx]
 
@@ -385,7 +385,7 @@ def file_tools_diff(
         output_lines.append("")
 
     result = "".join(output_lines)
-    return make_result(result, max_chars)
+    return make_success(make_result(result, max_chars))
 
 
 # ── 5. file_tools_history ─────────────────────────────────
@@ -402,14 +402,14 @@ def file_tools_history(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return json.dumps({
+        return make_success(json.dumps({
             "path": resolved,
             "error": "文件不存在",
-        }, ensure_ascii=False)
+        }, ensure_ascii=False))
 
     history = _list_history(resolved)
 
-    return json.dumps({
+    return make_success(json.dumps({
         "path": resolved,
         "history": history,
-    }, ensure_ascii=False, indent=2)
+    }, ensure_ascii=False, indent=2))

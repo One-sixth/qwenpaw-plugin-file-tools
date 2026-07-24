@@ -157,23 +157,21 @@ def file_tools_read_block(
     resolved = resolve_path(path)
 
     if start_col > end_col:
-        return f"读取矩形块失败，因为 start_col ({start_col}) 大于 end_col ({end_col})。"
+        return make_error(f"读取矩形块失败，因为 start_col ({start_col}) 大于 end_col ({end_col})。")
     if start_row < 1 or end_row < 1:
-        return f"读取矩形块失败，因为行号必须 >= 1。"
+        return make_error("读取矩形块失败，因为行号必须 >= 1。")
     if start_row > end_row:
-        return f"读取矩形块失败，因为起始行号 {start_row} 大于结束行号 {end_row}。"
+        return make_error(f"读取矩形块失败，因为起始行号 {start_row} 大于结束行号 {end_row}。")
     if start_col < 1 or end_col < 1:
-        return format_error("读取矩形块", "起始列号和结束列号必须 >= 1")
+        return make_error("读取矩形块", "起始列号和结束列号必须 >= 1")
 
     if not os.path.isfile(resolved):
-        return (
-            f"读取矩形块失败，因为文件「{resolved}」不存在。"
-        )
+        return make_error(f"读取矩形块失败，因为文件「{resolved}」不存在。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return f"读取矩形块失败，因为读取文件时出错：{e}。"
+        return make_error(f"读取矩形块失败，因为读取文件时出错：{e}。")
 
     # 空文件（[""]）视为0行
     if len(lines) == 1 and lines[0] == "":
@@ -181,9 +179,9 @@ def file_tools_read_block(
 
     total_lines = len(lines)
     if total_lines == 0:
-        return f"读取矩形块失败，因为文件为空（长度为 0）。"
+        return make_error("读取矩形块失败，因为文件为空（长度为 0）。")
     if start_row > total_lines:
-        return f"读取矩形块失败，因为文件共 {total_lines} 行，起始行号 {start_row} 超出范围。"
+        return make_error(f"读取矩形块失败，因为文件共 {total_lines} 行，起始行号 {start_row} 超出范围。")
 
     actual_start = max(0, start_row - 1)
     actual_end = min(end_row, total_lines)
@@ -223,7 +221,7 @@ def file_tools_read_block(
         next_line = row_num
         result += f"\n`<<truncated>>` 内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
 
-    return result
+    return make_success(result)
 
 
 # ── 8. file_tools_regex ───────────────────────────────────
@@ -254,50 +252,50 @@ def file_tools_regex(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error(
+        return make_error(
             "正则匹配",
             f"文件「{resolved}」不存在",
         )
 
     if not pattern:
-        return format_error("正则匹配", "pattern 不能为空字符串。请传入有效的正则表达式。")
+        return make_error("正则匹配", "pattern 不能为空字符串。请传入有效的正则表达式。")
 
     try:
         compiled = re_module.compile(pattern)
     except re_module.error as e:
-        return format_error("正则匹配", f"正则表达式语法错误：{e}")
+        return make_error("正则匹配", f"正则表达式语法错误：{e}")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("正则匹配", f"读取文件时出错：{e}")
+        return make_error("正则匹配", f"读取文件时出错：{e}")
 
     # ── 参数校验 ──────────────────────────────────────────
 
     if start < 1:
-        return format_error("正则匹配", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始显示」，最小值为 1。")
+        return make_error("正则匹配", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始显示」，最小值为 1。")
 
     if count == 0:
-        return format_error("正则匹配", "count 参数值 0 不合法。count=-1 表示返回所有匹配，count>=1 表示返回指定数量。")
+        return make_error("正则匹配", "count 参数值 0 不合法。count=-1 表示返回所有匹配，count>=1 表示返回指定数量。")
     if count < -1:
-        return format_error("正则匹配", f"count 参数值 {count} 不合法。负数值仅支持 -1（返回所有匹配）。")
+        return make_error("正则匹配", f"count 参数值 {count} 不合法。负数值仅支持 -1（返回所有匹配）。")
 
     total_lines = len(lines)
 
     if start_line < 1:
-        return format_error("正则匹配", f"start_line 参数值 {start_line} 不合法。行号从 1 开始，最小值为 1。")
+        return make_error("正则匹配", f"start_line 参数值 {start_line} 不合法。行号从 1 开始，最小值为 1。")
     if end_line is not None and end_line < 1:
-        return format_error("正则匹配", f"end_line 参数值 {end_line} 不合法。行号从 1 开始，最小值为 1。")
+        return make_error("正则匹配", f"end_line 参数值 {end_line} 不合法。行号从 1 开始，最小值为 1。")
     if end_line is not None and end_line < start_line:
-        return format_error("正则匹配", f"end_line ({end_line}) 小于 start_line ({start_line})，参数矛盾。")
+        return make_error("正则匹配", f"end_line ({end_line}) 小于 start_line ({start_line})，参数矛盾。")
     if start_line > total_lines:
-        return format_error("正则匹配", f"start_line 参数值 {start_line} 超出文件范围。文件共 {total_lines} 行。")
+        return make_error("正则匹配", f"start_line 参数值 {start_line} 超出文件范围。文件共 {total_lines} 行。")
 
     actual_start = start_line - 1
     actual_end = min(end_line or total_lines, total_lines)
 
     if actual_start >= total_lines:
-        return json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False)
+        return make_success(json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False))
 
     # 拼接行范围（跨行匹配）
     range_lines = lines[actual_start:actual_end]
@@ -368,7 +366,7 @@ def file_tools_regex(
         })
 
     if not all_matches:
-        return json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False)
+        return make_success(json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False))
 
     # 分页
     effective_count = len(all_matches) if count == -1 else count
@@ -387,4 +385,4 @@ def file_tools_regex(
             "如需获取完整内容，请使用 file_tools_read_lines 或 file_tools_read_block 读取目标行。"
         )
 
-    return json.dumps(result, indent=2, ensure_ascii=False)
+    return make_success(json.dumps(result, indent=2, ensure_ascii=False))

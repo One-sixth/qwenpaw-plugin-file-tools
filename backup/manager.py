@@ -29,7 +29,7 @@ def get_last_backup_error() -> str | None:
 def _get_backup_root() -> str:
     """获取备份根目录。
 
-    通过 get_session_dir() 获取 QwenPaw 工作区中的会话路径。
+    通过 get_session_dir() 获取工作区中的 file_tools_data 目录。
     如果无法获取（如 QwenPaw 配置异常），get_session_dir() 会抛出
     RuntimeError 说明无法获取会话文件路径，由 backup_file() 捕获后
     返回 None，工具函数将显示错误提示。
@@ -52,6 +52,19 @@ def _get_next_number(history_dir: str) -> int:
     return number
 
 
+def _write_json_atomic(path: str, data: dict) -> None:
+    """原子写入 JSON 文件（.temp + os.replace）。"""
+    tmp_path = path + ".temp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
 def _update_files_json(backup_root: str, path: str, encoded: str) -> None:
     """更新 files.json 映射（仅用于人工查阅）。"""
     files_json = os.path.join(backup_root, "history", "files.json")
@@ -64,8 +77,7 @@ def _update_files_json(backup_root: str, path: str, encoded: str) -> None:
         if encoded not in mapping:
             mapping[encoded] = path
             os.makedirs(os.path.dirname(files_json), exist_ok=True)
-            with open(files_json, "w", encoding="utf-8") as f:
-                json.dump(mapping, f, ensure_ascii=False, indent=2)
+            _write_json_atomic(files_json, mapping)
     except Exception as e:
         logger.warning("更新 files.json 失败: %s", e)
 
@@ -150,3 +162,77 @@ def list_history(path: str) -> List[Dict[str, Any]]:
 def get_history_count(path: str) -> int:
     """获取文件历史版本总数。"""
     return len(list_history(path))
+# ── 旧备份清理 ────────────────────────────────────────────
+
+
+def cleanup_old_backups(days: int = 30) -> None:
+    """清理超过指定天数的历史备份文件。
+
+    Args:
+        days: 保留天数，超过此天数的备份文件将被移入回收站。
+    """
+    try:
+        backup_root = get_session_dir()
+    except RuntimeError:
+        logger.warning("清理备份失败：无法获取备份目录路径")
+        return
+
+    history_dir = os.path.join(backup_root, "history")
+    if not os.path.isdir(history_dir):
+        return
+
+    cutoff = datetime.now().timestamp() - days * 86400
+    total_removed = 0
+
+    # 尝试导入 pytrash（走回收站），失败则用 os.remove
+    try:
+        import pytrash
+
+        _trash = lambda p: pytrash.recycle([p])
+    except ImportError:
+        _trash = os.remove
+
+    for encoded_name in os.listdir(history_dir):
+        enc_dir = os.path.join(history_dir, encoded_name)
+        if not os.path.isdir(enc_dir):
+            continue
+
+        removed_any = False
+        for backup_file in os.listdir(enc_dir):
+            backup_path = os.path.join(enc_dir, backup_file)
+            if not os.path.isfile(backup_path):
+                continue
+
+            try:
+                mtime = os.path.getmtime(backup_path)
+                if mtime < cutoff:
+                    _trash(backup_path)
+                    total_removed += 1
+                    removed_any = True
+                    logger.debug("已清理过期备份: %s", backup_path)
+            except Exception as e:
+                logger.warning("清理备份文件失败 %s: %s", backup_path, e)
+
+        # 如果目录为空，删除目录本身
+        if removed_any and not os.listdir(enc_dir):
+            try:
+                os.rmdir(enc_dir)
+                logger.debug("已移除空备份目录: %s", enc_dir)
+            except Exception as e:
+                logger.warning("移除空备份目录失败 %s: %s", enc_dir, e)
+
+    # 清理 files.json 中的无效条目
+    files_json = os.path.join(history_dir, "files.json")
+    if os.path.isfile(files_json):
+        try:
+            with open(files_json, "r", encoding="utf-8") as f:
+                mapping = json.load(f)
+            valid = {k: v for k, v in mapping.items()
+                     if os.path.isdir(os.path.join(history_dir, k))}
+            if len(valid) != len(mapping):
+                _write_json_atomic(files_json, valid)
+        except Exception as e:
+            logger.warning("清理 files.json 失败: %s", e)
+
+    if total_removed > 0:
+        logger.info("备份清理完成：共移除了 %d 个过期备份文件", total_removed)

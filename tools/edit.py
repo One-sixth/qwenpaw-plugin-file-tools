@@ -26,6 +26,8 @@ try:
         detect_encoding,
         format_backup_info,
         format_error,
+        make_error,
+        make_success,
         normalize_newlines,
         read_file_lines,
         resolve_path,
@@ -38,6 +40,8 @@ except ImportError:
         detect_encoding,
         format_backup_info,
         format_error,
+        make_error,
+        make_success,
         normalize_newlines,
         read_file_lines,
         resolve_path,
@@ -80,7 +84,7 @@ def file_tools_append(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error(
+        return make_error(
             "追加",
             f"文件「{resolved}」不存在",
             "请确认路径是否正确。文件不存在时请先用 QwenPaw 的 write_file 工具创建文件。",
@@ -88,7 +92,7 @@ def file_tools_append(
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("追加", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("追加", "备份原文件失败。因为获取会话文件路径失败。")
 
     resolved_encoding = detect_encoding(resolved, encoding)
 
@@ -103,7 +107,7 @@ def file_tools_append(
         with open(resolved, "a", encoding=resolved_encoding, newline=nl) as f:
             f.write(normalized)
     except Exception as e:
-        return format_error("追加", f"写入文件时出错：{e}")
+        return make_error("追加", f"写入文件时出错：{e}")
 
     lines, _ = read_file_lines(resolved, resolved_encoding)
     total_lines = len(lines)
@@ -115,7 +119,7 @@ def file_tools_append(
     for i in range(preview_start, total_lines):
         result_parts.append(f"{i + 1}\t{truncate_line(lines[i])}")
 
-    return "\n".join(result_parts)
+    return make_success("\n".join(result_parts))
 
 
 # ── 10. file_tools_replace_lines ──────────────────────────
@@ -142,24 +146,24 @@ def file_tools_replace_lines(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("替换行", f"文件「{resolved}」不存在")
+        return make_error("替换行", f"文件「{resolved}」不存在")
     if start_line < 1 or end_line < 1:
-        return format_error("替换行", f"行号必须 >= 1，收到 start_line={start_line}, end_line={end_line}")
+        return make_error("替换行", f"行号必须 >= 1，收到 start_line={start_line}, end_line={end_line}")
     if start_line > end_line:
-        return format_error("替换行", f"起始行号 {start_line} 大于结束行号 {end_line}")
+        return make_error("替换行", f"起始行号 {start_line} 大于结束行号 {end_line}")
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("替换行", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("替换行", "备份原文件失败。因为获取会话文件路径失败。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("替换行", f"读取文件时出错：{e}")
+        return make_error("替换行", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
     if start_line > total_lines + 1:
-        return format_error("替换行", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
+        return make_error("替换行", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
 
     old_lines = lines.copy()
     actual_start = max(0, start_line - 1)
@@ -175,7 +179,7 @@ def file_tools_replace_lines(
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("替换行", f"写入文件时出错：{e}")
+        return make_error("替换行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
 
@@ -190,7 +194,7 @@ def file_tools_replace_lines(
     diff_text = "\n".join(diff_parts)
 
     summary = f"成功替换：已将第 {start_line}~{end_line} 行替换为 {len(new_lines_content)} 行新内容。文件共 {new_total} 行。{format_backup_info(resolved, history_number)}"
-    return "\n".join([summary, "", diff_text])
+    return make_success("\n".join([summary, "", diff_text]))
 
 
 def _build_replace_preview(lines_before, lines_after, start_line, end_line, old_count):
@@ -248,7 +252,7 @@ def _build_replace_preview(lines_before, lines_after, start_line, end_line, old_
     parts.append("")
     _section(lines_after, total_after, start_line, new_section_end, "─── 替换后 ───")
 
-    return "\n".join(parts)
+    return make_success("\n".join(parts))
 
 
 # ── 11. file_tools_insert_lines ───────────────────────────
@@ -273,18 +277,18 @@ def file_tools_insert_lines(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("插入行", f"文件「{resolved}」不存在")
+        return make_error("插入行", f"文件「{resolved}」不存在")
     if line < 1:
-        return format_error("插入行", f"行号 {line} 不合法，行号从 1 开始")
+        return make_error("插入行", f"行号 {line} 不合法，行号从 1 开始")
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("插入行", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("插入行", "备份原文件失败。因为获取会话文件路径失败。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("插入行", f"读取文件时出错：{e}")
+        return make_error("插入行", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
     insert_pos = min(line - 1, total_lines)
@@ -301,7 +305,7 @@ def file_tools_insert_lines(
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("插入行", f"写入文件时出错：{e}")
+        return make_error("插入行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
 
@@ -319,7 +323,7 @@ def file_tools_insert_lines(
         diff_parts.append(f"  {next_line + 1} > {truncate_line(lines[next_line])}")
     diff_text = "\n".join(diff_parts)
 
-    return (
+    return make_success(
         f"成功插入：已在第 {line} 行前插入了 {insert_count} 行内容。"
         f"文件从 {total_lines} 行变为 {new_total} 行。"
         f"{format_backup_info(resolved, history_number)}\n\n"
@@ -349,24 +353,24 @@ def file_tools_delete_lines(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("删除行", f"文件「{resolved}」不存在")
+        return make_error("删除行", f"文件「{resolved}」不存在")
     if start_line < 1 or end_line < 1:
-        return format_error("删除行", f"行号必须 >= 1")
+        return make_error("删除行", f"行号必须 >= 1")
     if start_line > end_line:
-        return format_error("删除行", f"起始行号 {start_line} 大于结束行号 {end_line}")
+        return make_error("删除行", f"起始行号 {start_line} 大于结束行号 {end_line}")
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("删除行", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("删除行", "备份原文件失败。因为获取会话文件路径失败。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("删除行", f"读取文件时出错：{e}")
+        return make_error("删除行", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
     if start_line > total_lines:
-        return format_error("删除行", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
+        return make_error("删除行", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
 
     old_lines = lines.copy()
     actual_start = max(0, start_line - 1)
@@ -380,7 +384,7 @@ def file_tools_delete_lines(
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("删除行", f"写入文件时出错：{e}")
+        return make_error("删除行", f"写入文件时出错：{e}")
 
     new_total = len(lines)
 
@@ -398,7 +402,7 @@ def file_tools_delete_lines(
     diff_text = "\n".join(diff_parts)
 
     summary = f"成功删除：已删除第 {start_line}~{end_line} 行（共 {actual_end - actual_start} 行）。文件从 {total_lines} 行变为 {new_total} 行。{format_backup_info(resolved, history_number)}"
-    return "\n".join([summary, "", diff_text])
+    return make_success("\n".join([summary, "", diff_text]))
 
 
 # ── 13. file_tools_replace ────────────────────────────────
@@ -431,28 +435,28 @@ def file_tools_replace(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("替换", f"文件「{resolved}」不存在")
+        return make_error("替换", f"文件「{resolved}」不存在")
 
     if not old_text:
-        return format_error("替换", "old_text 不能为空字符串")
+        return make_error("替换", "old_text 不能为空字符串")
 
     if count == 0:
-        return format_error("替换", f"count 参数值 {count} 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
+        return make_error("替换", f"count 参数值 {count} 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
     if count < -1:
-        return format_error("替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
+        return make_error("替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("替换", f"读取文件时出错：{e}")
+        return make_error("替换", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
     if start_line < 1:
-        return format_error("替换", f"起始行号 {start_line} 不合法")
+        return make_error("替换", f"起始行号 {start_line} 不合法")
 
     actual_start = start_line - 1
     if actual_start >= total_lines:
-        return format_error("替换", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
+        return make_error("替换", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
 
     actual_end = end_line if end_line is not None else total_lines
     actual_end = min(actual_end, total_lines)
@@ -466,7 +470,7 @@ def file_tools_replace(
     # 统计匹配次数
     match_count = range_content.count(old_text)
     if match_count == 0:
-        return (
+        return make_error(
             f"替换失败，因为在「{resolved}」第 {start_line}~{actual_end} 行范围内"
             f"未找到匹配「{old_text}」的内容。"
         )
@@ -477,7 +481,7 @@ def file_tools_replace(
         effective_count = min(count, match_count)
 
     if dry_run:
-        return (
+        return make_success(
             f"⚠️ dry_run 模式 — 以下为模拟修改结果，未实际修改文件。\n\n"
             f"模拟替换：在「{resolved}」第 {start_line}~{actual_end} 行范围内"
             f"将替换 {effective_count} 处（共匹配到 {match_count} 处）。"
@@ -486,7 +490,7 @@ def file_tools_replace(
     # 备份
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("替换", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("替换", "备份原文件失败。因为获取会话文件路径失败。")
 
     # 执行替换（跨行匹配）
     new_range = range_content.replace(old_text, new_text, effective_count)
@@ -504,7 +508,7 @@ def file_tools_replace(
     try:
         _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("替换", f"写入文件时出错：{e}")
+        return make_error("替换", f"写入文件时出错：{e}")
 
     # 生成 diff 预览（difflib.unified_diff, n=1）
     import difflib
@@ -522,7 +526,7 @@ def file_tools_replace(
     diff_text = ''.join(diff)
 
     new_total = len(new_lines)
-    return (
+    return make_success(
         f"成功替换：在「{resolved}」第 {start_line}~{actual_end} 行范围内"
         f"替换了 {effective_count} 处。文件从 {total_lines} 行变为 {new_total} 行。"
         f"{format_backup_info(resolved, history_number)}\n\n"
@@ -562,41 +566,41 @@ def file_tools_regex_replace(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("正则替换", f"文件「{resolved}」不存在")
+        return make_error("正则替换", f"文件「{resolved}」不存在")
 
     if not pattern:
-        return format_error("正则替换", "pattern 不能为空字符串。请传入有效的正则表达式。")
+        return make_error("正则替换", "pattern 不能为空字符串。请传入有效的正则表达式。")
 
     try:
         compiled = re_module.compile(pattern)
     except re_module.error as e:
-        return format_error("正则替换", f"正则表达式语法错误：{e}")
+        return make_error("正则替换", f"正则表达式语法错误：{e}")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("正则替换", f"读取文件时出错：{e}")
+        return make_error("正则替换", f"读取文件时出错：{e}")
 
     # ── 参数校验 ──────────────────────────────────────────
 
     total_lines = len(lines)
 
     if start < 1:
-        return format_error("正则替换", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始替换」，最小值为 1。")
+        return make_error("正则替换", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始替换」，最小值为 1。")
 
     if count == 0:
-        return format_error("正则替换", "count 参数值 0 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
+        return make_error("正则替换", "count 参数值 0 不合法。count=-1 表示替换所有匹配，count>=1 表示替换指定数量。")
     if count < -1:
-        return format_error("正则替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
+        return make_error("正则替换", f"count 参数值 {count} 不合法。负数值仅支持 -1（替换所有匹配）。")
 
     if start_line < 1:
-        return format_error("正则替换", f"start_line 参数值 {start_line} 不合法。行号从 1 开始，最小值为 1。")
+        return make_error("正则替换", f"start_line 参数值 {start_line} 不合法。行号从 1 开始，最小值为 1。")
     if end_line is not None and end_line < 1:
-        return format_error("正则替换", f"end_line 参数值 {end_line} 不合法。行号从 1 开始，最小值为 1。")
+        return make_error("正则替换", f"end_line 参数值 {end_line} 不合法。行号从 1 开始，最小值为 1。")
     if end_line is not None and end_line < start_line:
-        return format_error("正则替换", f"end_line ({end_line}) 小于 start_line ({start_line})，参数矛盾。")
+        return make_error("正则替换", f"end_line ({end_line}) 小于 start_line ({start_line})，参数矛盾。")
     if start_line > total_lines:
-        return format_error("正则替换", f"start_line 参数值 {start_line} 超出文件范围。文件共 {total_lines} 行。")
+        return make_error("正则替换", f"start_line 参数值 {start_line} 超出文件范围。文件共 {total_lines} 行。")
 
     actual_start = start_line - 1
     actual_end = min(end_line or total_lines, total_lines)
@@ -610,7 +614,7 @@ def file_tools_regex_replace(
     total_matches = len(all_matches)
 
     if total_matches == 0:
-        return (
+        return make_error(
             f"正则替换失败，因为在「{resolved}」第 {start_line}~{actual_end} 行范围内"
             f"未找到匹配「{pattern}」的内容。"
         )
@@ -618,7 +622,7 @@ def file_tools_regex_replace(
     # 计算要替换的范围（从后往前）
     skip = start - 1
     if skip >= total_matches:
-        return format_error("正则替换", f"start 参数值 {start} 超出匹配总数（共 {total_matches} 个匹配）。")
+        return make_error("正则替换", f"start 参数值 {start} 超出匹配总数（共 {total_matches} 个匹配）。")
 
     if count == -1:
         effective_matches = all_matches[skip:]
@@ -626,12 +630,12 @@ def file_tools_regex_replace(
         effective_matches = all_matches[skip:skip + count]
 
     if not effective_matches:
-        return f"正则替换失败，因为从第 {start} 个匹配开始，剩余匹配数不足。"
+        return make_error(f"正则替换失败，因为从第 {start} 个匹配开始，剩余匹配数不足。")
 
     replace_count = len(effective_matches)
 
     if dry_run:
-        return (
+        return make_success(
             f"⚠️ dry_run 模式 — 以下为模拟修改结果，未实际修改文件。\n\n"
             f"模拟替换：\n"
             f"  匹配到 {total_matches} 处，将替换 {replace_count} 处。"
@@ -639,7 +643,7 @@ def file_tools_regex_replace(
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("正则替换", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("正则替换", "备份原文件失败。因为获取会话文件路径失败。")
 
     # 从后往前替换，避免偏移漂移
     old_range = range_content
@@ -657,7 +661,7 @@ def file_tools_regex_replace(
     try:
         _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("正则替换", f"写入文件时出错：{e}")
+        return make_error("正则替换", f"写入文件时出错：{e}")
 
     # 生成 unified diff 预览
     import difflib
@@ -673,7 +677,7 @@ def file_tools_regex_replace(
     diff_text = ''.join(diff)
 
     new_total = len(new_lines)
-    return (
+    return make_success(
         f"成功替换了 {replace_count} 处。文件从 {total_lines} 行变为 {new_total} 行。"
         f"{format_backup_info(resolved, history_number)}\n\n"
         f"{diff_text}"
@@ -706,30 +710,30 @@ def file_tools_indent_lines(
     resolved = resolve_path(path)
 
     if not os.path.isfile(resolved):
-        return format_error("缩进调整", f"文件「{resolved}」不存在")
+        return make_error("缩进调整", f"文件「{resolved}」不存在")
     if start_line < 1:
-        return format_error("缩进调整", f"起始行号 {start_line} 不合法")
+        return make_error("缩进调整", f"起始行号 {start_line} 不合法")
     if end_line is not None and end_line < 1:
-        return format_error("缩进调整", f"结束行号 {end_line} 不合法，最小值为 1")
+        return make_error("缩进调整", f"结束行号 {end_line} 不合法，最小值为 1")
     if end_line is not None and end_line < start_line:
-        return format_error("缩进调整", f"结束行号 {end_line} 小于起始行号 {start_line}")
+        return make_error("缩进调整", f"结束行号 {end_line} 小于起始行号 {start_line}")
     if mode not in ("expand", "shrink"):
-        return format_error("缩进调整", f"模式 {mode} 不合法，仅支持 expand 和 shrink")
+        return make_error("缩进调整", f"模式 {mode} 不合法，仅支持 expand 和 shrink")
     if count < 0:
-        return format_error("缩进调整", f"数量 {count} 不合法，必须 >= 0")
+        return make_error("缩进调整", f"数量 {count} 不合法，必须 >= 0")
     if not char:
-        return format_error("缩进调整", "填充字符不能为空")
+        return make_error("缩进调整", "填充字符不能为空")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return format_error("缩进调整", f"读取文件时出错：{e}")
+        return make_error("缩进调整", f"读取文件时出错：{e}")
 
     total_lines = len(lines)
     if total_lines == 0:
-        return "缩进调整失败，因为文件为空。"
+        return make_error("缩进调整失败，因为文件为空。")
     if start_line > total_lines:
-        return format_error("缩进调整", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
+        return make_error("缩进调整", f"起始行号 {start_line} 超出文件范围（共 {total_lines} 行）")
 
     actual_start = start_line - 1
     actual_end = min(end_line or total_lines, total_lines)
@@ -749,11 +753,11 @@ def file_tools_indent_lines(
             changes.append((i + 1, old_line, lines[i]))
 
     if not changes:
-        return "缩进调整失败，因为没有行被修改。"
+        return make_error("缩进调整失败，因为没有行被修改。")
 
     history_number = backup_file(resolved)
     if history_number is None:
-        return format_error("缩进调整", "备份原文件失败。因为获取会话文件路径失败。")
+        return make_error("缩进调整", "备份原文件失败。因为获取会话文件路径失败。")
 
     # 根据 line_separator 选择 newline 参数
     newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
@@ -763,7 +767,7 @@ def file_tools_indent_lines(
         content = "\n".join(lines)
         _write_file(resolved, content, resolved_encoding, newline=nl)
     except Exception as e:
-        return format_error("缩进调整", f"写入文件时出错：{e}")
+        return make_error("缩进调整", f"写入文件时出错：{e}")
 
     # 构建 diff 预览（先 - 后 + 分组）
     diff_parts = []
@@ -774,7 +778,7 @@ def file_tools_indent_lines(
     diff_text = "\n".join(diff_parts)
 
     mode_text = "增加了" if mode == "expand" else "减少了"
-    return (
+    return make_success(
         f"成功缩进：已对第 {start_line}~{actual_end} 行{mode_text} {count} 个缩进。"
         f"{format_backup_info(resolved, history_number)}\n\n"
         f"{diff_text}\n"

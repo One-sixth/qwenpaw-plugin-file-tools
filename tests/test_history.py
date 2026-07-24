@@ -2,8 +2,15 @@
 
 import json
 import os
+import time
 
-from backup.manager import backup_file, get_history_count, list_history, restore_file
+from backup.manager import (
+    backup_file,
+    cleanup_old_backups,
+    get_history_count,
+    list_history,
+    restore_file,
+)
 from tools.edit import file_tools_replace, file_tools_replace_lines
 from tools.history import file_tools_undo
 
@@ -82,7 +89,7 @@ class TestUndo:
         file_tools_replace(tmp_file, "line1", "MODIFIED")
 
         result = file_tools_undo(tmp_file, history_number=1)
-        assert "已恢复" in result
+        assert "已恢复" in result.content[0].text
 
         with open(tmp_file, "r") as f:
             restored = f.read()
@@ -90,19 +97,19 @@ class TestUndo:
 
     def test_undo_no_history(self, tmp_file):
         result = file_tools_undo(tmp_file, history_number=1)
-        assert "失败" in result
-        assert "没有历史版本" in result
+        assert "失败" in result.content[0].text
+        assert "没有历史版本" in result.content[0].text
 
     def test_undo_invalid_number(self, tmp_file):
         file_tools_replace(tmp_file, "line1", "X")
 
         result = file_tools_undo(tmp_file, history_number=99)
-        assert "失败" in result
-        assert "共有" in result
+        assert "失败" in result.content[0].text
+        assert "共有" in result.content[0].text
 
     def test_undo_nonexistent_file(self):
         result = file_tools_undo("/nonexistent_xyz", 1)
-        assert "失败" in result
+        assert "失败" in result.content[0].text
 
     def test_undo_multiple_versions(self, multi_line_file):
         with open(multi_line_file, "r") as f:
@@ -134,7 +141,89 @@ class TestUndo:
         file_tools_undo(multi_line_file, history_number=2)
         with open(multi_line_file, "r") as f:
             restored_2 = f.read()
-        # #2 是第一次修改前备份的 = 原始文件...不对，backup 在修改前调用，
         # 第一次修改前备份 → #1（原始），第一次修改后文件变了
-        # 第二次修改前备份 → #2（第一次修改后的文件）
         assert restored_2 == after_v1
+
+
+class TestCleanupOldBackups:
+    def test_no_history_dir(self, tmp_dir):
+        """history 目录不存在时不应报错。"""
+        # 不创建任何备份，直接清理
+        cleanup_old_backups(days=30)
+        # 不应抛异常
+
+    def test_remove_old_backups(self, tmp_dir):
+        """超过保留天数的备份应被移除。"""
+        # 创建备份目录（mock 的 get_session_dir 返回 tmp_dir/_file_tools）
+        backup_root = os.path.join(tmp_dir, "_file_tools")
+        history_dir = os.path.join(backup_root, "history")
+        enc_dir = os.path.join(history_dir, "test123")
+        os.makedirs(enc_dir)
+
+        # 创建旧备份文件（修改时间为 31 天前）
+        old_file = os.path.join(enc_dir, "1")
+        with open(old_file, "w") as f:
+            f.write("old backup")
+        old_time = time.time() - 31 * 86400
+        os.utime(old_file, (old_time, old_time))
+
+        # 创建新备份文件（修改时间为 1 天前）
+        new_file = os.path.join(enc_dir, "2")
+        with open(new_file, "w") as f:
+            f.write("new backup")
+        new_time = time.time() - 1 * 86400
+        os.utime(new_file, (new_time, new_time))
+
+        # 执行清理
+        cleanup_old_backups(days=30)
+
+        # 旧文件应被移除，新文件应保留
+        assert not os.path.isfile(old_file), "旧备份文件应被移除"
+        assert os.path.isfile(new_file), "新备份文件应保留"
+
+    def test_remove_empty_dir(self, tmp_dir):
+        """所有备份文件被移除后，空目录应被删除。"""
+        backup_root = os.path.join(tmp_dir, "_file_tools")
+        history_dir = os.path.join(backup_root, "history")
+        enc_dir = os.path.join(history_dir, "test456")
+        os.makedirs(enc_dir)
+
+        # 创建仅一个旧备份
+        old_file = os.path.join(enc_dir, "1")
+        with open(old_file, "w") as f:
+            f.write("old")
+        old_time = time.time() - 31 * 86400
+        os.utime(old_file, (old_time, old_time))
+
+        cleanup_old_backups(days=30)
+
+        # 目录也应被移除
+        assert not os.path.isdir(enc_dir), "空备份目录应被移除"
+
+    def test_cleanup_files_json(self, tmp_dir):
+        """清理后 files.json 中的无效条目应被移除。"""
+        backup_root = os.path.join(tmp_dir, "_file_tools")
+        history_dir = os.path.join(backup_root, "history")
+        os.makedirs(history_dir)
+
+        # 创建 files.json 包含两个条目，一个有效一个无效
+        valid_dir = os.path.join(history_dir, "validhash")
+        os.makedirs(valid_dir)
+        # 在 valid_dir 中放一个备份文件
+        backup_file_path = os.path.join(valid_dir, "1")
+        with open(backup_file_path, "w") as f:
+            f.write("backup")
+        # 确保文件不是旧的
+        os.utime(backup_file_path, (time.time(), time.time()))
+
+        files_json = os.path.join(history_dir, "files.json")
+        with open(files_json, "w", encoding="utf-8") as f:
+            json.dump({"validhash": "/path/to/file", "stalehash": "/path/to/stale"}, f)
+
+        cleanup_old_backups(days=30)
+
+        # stalehash 条目应被移除
+        with open(files_json, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+        assert "validhash" in mapping
+        assert "stalehash" not in mapping, "无效的 files.json 条目应被移除"

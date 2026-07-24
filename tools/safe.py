@@ -14,9 +14,9 @@ import shutil
 from typing import Optional
 
 try:
-    from ..utils import format_error, resolve_path
+    from ..utils import format_error, make_error, make_success, resolve_path
 except ImportError:
-    from utils import format_error, resolve_path
+    from utils import format_error, make_error, make_success, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +40,14 @@ def file_tools_copy(
     resolved_dst = resolve_path(dst)
 
     if not os.path.exists(resolved_src):
-        return (
-            f"复制失败，因为找不到源文件「{resolved_src}」。"
+        return make_error(
+            "复制",
+            f"因为找不到源文件「{resolved_src}」。"
             f"请使用 file_tools_listdir(path=\"{os.path.dirname(src) or '.'}\") "
-            f"确认源文件是否存在于该目录中，或检查路径拼写是否正确。"
+            f"确认源文件是否存在于该目录中，或检查路径拼写是否正确。",
         )
     if resolved_src == resolved_dst:
-        return f"源路径和目标路径相同（{resolved_src}），无需操作。"
+        return make_success(f"源路径和目标路径相同（{resolved_src}），无需操作。")
 
     # ── 目录→已存在目录：融合 ──
     if os.path.isdir(resolved_src) and os.path.isdir(resolved_dst):
@@ -57,9 +58,10 @@ def file_tools_copy(
                     conflicts.append(item)
             if conflicts:
                 c_list = "、".join(conflicts)
-                return (
-                    f"复制失败，因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
-                    f"如果要覆盖，请设置 overwrite=True。"
+                return make_error(
+                    "复制",
+                    f"因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
+                    f"如果要覆盖，请设置 overwrite=True。",
                 )
         for item in os.listdir(resolved_src):
             src_item = os.path.join(resolved_src, item)
@@ -73,26 +75,28 @@ def file_tools_copy(
                 shutil.copytree(src_item, dst_item)
             else:
                 shutil.copy2(src_item, dst_item)
-        return f"已复制「{resolved_src}」→「{resolved_dst}」（融合）。"
+        return make_success(f"已复制「{resolved_src}」→「{resolved_dst}」（融合）。")
 
     # ── 文件→已存在目录：放入目录内 ──
     if os.path.isfile(resolved_src) and os.path.isdir(resolved_dst):
         dst_file = os.path.join(resolved_dst, os.path.basename(resolved_src))
         if os.path.exists(dst_file) and not overwrite:
-            return (
-                f"复制失败，因为目标目录中已存在同名文件「{dst_file}」。"
-                f"如果要覆盖，请设置 overwrite=True。"
+            return make_error(
+                "复制",
+                f"因为目标目录中已存在同名文件「{dst_file}」。"
+                f"如果要覆盖，请设置 overwrite=True。",
             )
         if os.path.exists(dst_file):
             os.remove(dst_file)
         shutil.copy2(resolved_src, dst_file)
-        return f"已复制「{resolved_src}」→「{dst_file}」。"
+        return make_success(f"已复制「{resolved_src}」→「{dst_file}」。")
 
     # ── 常规复制 ──
     if os.path.exists(resolved_dst) and not overwrite:
-        return (
-            f"复制失败，因为目标文件「{resolved_dst}」已存在。"
-            f"如果要覆盖目标文件，请设置 overwrite=True。"
+        return make_error(
+            "复制",
+            f"因为目标文件「{resolved_dst}」已存在。"
+            f"如果要覆盖目标文件，请设置 overwrite=True。",
         )
 
     try:
@@ -107,9 +111,9 @@ def file_tools_copy(
                 os.makedirs(dst_dir, exist_ok=True)
             shutil.copy2(resolved_src, resolved_dst)
     except Exception as e:
-        return format_error("复制", f"操作时出错：{e}")
+        return make_error("复制", f"操作时出错：{e}")
 
-    return f"已复制「{resolved_src}」→「{resolved_dst}」。"
+    return make_success(f"已复制「{resolved_src}」→「{resolved_dst}」。")
 
 
 # ── 16. file_tools_move ───────────────────────────────────
@@ -131,12 +135,13 @@ def file_tools_move(
     resolved_dst = resolve_path(dst)
 
     if not os.path.exists(resolved_src):
-        return (
-            f"移动失败，因为找不到源文件「{resolved_src}」。"
-            f"请使用 file_tools_listdir 确认源文件是否存在。"
+        return make_error(
+            "移动",
+            f"因为找不到源文件「{resolved_src}」。"
+            f"请使用 file_tools_listdir 确认源文件是否存在。",
         )
     if resolved_src == resolved_dst:
-        return f"源路径和目标路径相同（{resolved_src}），无需操作。"
+        return make_success(f"源路径和目标路径相同（{resolved_src}），无需操作。")
 
     # ── 目录融合模式 ──
     if os.path.isdir(resolved_src) and os.path.isdir(resolved_dst):
@@ -149,9 +154,10 @@ def file_tools_move(
                     conflicts.append(item)
             if conflicts:
                 c_list = "、".join(conflicts)
-                return (
-                    f"移动失败，因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
-                    f"如果要覆盖，请设置 overwrite=True。"
+                return make_error(
+                    "移动",
+                    f"因为目标目录「{resolved_dst}」中已存在同名项目（{c_list}）。"
+                    f"如果要覆盖，请设置 overwrite=True。",
                 )
         # 逐个移动子条目
         for item in os.listdir(resolved_src):
@@ -164,26 +170,28 @@ def file_tools_move(
                     os.remove(dst_item)
             shutil.move(src_item, dst_item)
         os.rmdir(resolved_src)
-        return f"已移动「{resolved_src}」→「{resolved_dst}」（融合）。"
+        return make_success(f"已移动「{resolved_src}」→「{resolved_dst}」（融合）。")
 
     # ── 文件→已存在目录：放入目录内 ──
     if os.path.isfile(resolved_src) and os.path.isdir(resolved_dst):
         dst_file = os.path.join(resolved_dst, os.path.basename(resolved_src))
         if os.path.exists(dst_file) and not overwrite:
-            return (
-                f"移动失败，因为目标目录中已存在同名文件「{dst_file}」。"
-                f"如果要覆盖，请设置 overwrite=True。"
+            return make_error(
+                "移动",
+                f"因为目标目录中已存在同名文件「{dst_file}」。"
+                f"如果要覆盖，请设置 overwrite=True。",
             )
         if os.path.exists(dst_file):
             os.remove(dst_file)
         shutil.move(resolved_src, dst_file)
-        return f"已移动「{resolved_src}」→「{dst_file}」。"
+        return make_success(f"已移动「{resolved_src}」→「{dst_file}」。")
 
     # ── 常规移动模式 ──
     if os.path.exists(resolved_dst) and not overwrite:
-        return (
-            f"移动失败，因为目标文件「{resolved_dst}」已存在。"
-            f"如果要覆盖目标文件，请设置 overwrite=True。"
+        return make_error(
+            "移动",
+            f"因为目标文件「{resolved_dst}」已存在。"
+            f"如果要覆盖目标文件，请设置 overwrite=True。",
         )
 
     try:
@@ -198,12 +206,12 @@ def file_tools_move(
             try:
                 os.makedirs(dst_dir, exist_ok=True)
             except OSError as e:
-                return format_error("移动", f"创建目标目录「{dst_dir}」时出错：{e}")
+                return make_error("移动", f"创建目标目录「{dst_dir}」时出错：{e}")
         shutil.move(resolved_src, resolved_dst)
     except Exception as e:
-        return format_error("移动", f"操作时出错：{e}")
+        return make_error("移动", f"操作时出错：{e}")
 
-    return f"已移动「{resolved_src}」→「{resolved_dst}」。"
+    return make_success(f"已移动「{resolved_src}」→「{resolved_dst}」。")
 
 
 # ── 17. file_tools_trash ──────────────────────────────────
@@ -220,9 +228,10 @@ def file_tools_trash(
     resolved = resolve_path(path)
 
     if not os.path.exists(resolved):
-        return (
-            f"删除失败，因为找不到「{resolved}」。"
-            f"请确认路径是否正确。"
+        return make_error(
+            "删除",
+            f"因为找不到「{resolved}」。"
+            f"请确认路径是否正确。",
         )
 
     try:
@@ -230,13 +239,13 @@ def file_tools_trash(
 
         pytrash.recycle([resolved])
     except ImportError:
-        return "删除失败，因为 pytrash 库未安装。请执行 pip install pytrash。"
+        return make_error("删除", "因为 pytrash 库未安装。请执行 pip install pytrash。")
     except Exception as e:
-        return format_error("删除", f"放入回收站时出错：{e}")
+        return make_error("删除", f"放入回收站时出错：{e}")
 
-    return (
+    return make_success(
         f"已把「{resolved}」放入回收站。"
-        f"如需恢复，可使用 file_tools_trash_undo(path=\"{path}\")。"
+        f"如需恢复，可使用 file_tools_trash_undo(path=\"{path}\")。",
     )
 
 
@@ -258,15 +267,15 @@ def file_tools_trash_undo(
 
         entries = pytrash.entries()
     except ImportError:
-        return "恢复失败，因为 pytrash 库未安装。请执行 pip install pytrash。"
+        return make_error("恢复失败，因为 pytrash 库未安装。请执行 pip install pytrash。")
     except Exception as e:
-        return format_error("恢复", f"读取回收站时出错：{e}")
+        return make_error("恢复", f"读取回收站时出错：{e}")
 
     # 按原路径匹配
     matched = [e for e in entries if hasattr(e, "original_path") and e.original_path == resolved]
 
     if not matched:
-        return (
+        return make_error(
             f"恢复失败，因为在回收站中未找到「{resolved}」。"
             f"该文件可能已被永久删除，请确认路径是否正确。"
         )
@@ -278,9 +287,9 @@ def file_tools_trash_undo(
     try:
         pytrash.restore([best])
     except Exception as e:
-        return format_error("恢复", f"从回收站恢复时出错：{e}")
+        return make_error("恢复", f"从回收站恢复时出错：{e}")
 
-    return f"已从回收站恢复「{resolved}」。"
+    return make_success(f"已从回收站恢复「{resolved}」。")
 
 
 # ── 19. file_tools_mkdir ──────────────────────────────────
@@ -297,13 +306,13 @@ def file_tools_mkdir(
     resolved = resolve_path(path)
 
     if not path:
-        return format_error("创建目录", "路径不能为空，请指定一个有效的目录路径")
+        return make_error("创建目录", "路径不能为空，请指定一个有效的目录路径")
     if os.path.isdir(resolved):
-        return f"目录「{resolved}」已存在，无需创建。"
+        return make_success(f"目录「{resolved}」已存在，无需创建。")
 
     try:
         os.makedirs(resolved, exist_ok=True)
     except Exception as e:
-        return format_error("创建目录", f"操作时出错：{e}")
+        return make_error("创建目录", f"操作时出错：{e}")
 
-    return f"已创建目录「{resolved}」。"
+    return make_success(f"已创建目录「{resolved}」。")

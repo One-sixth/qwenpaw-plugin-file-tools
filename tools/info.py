@@ -27,7 +27,9 @@ try:
         format_csv,
         format_error,
         guess_file_type,
+        make_error,
         make_result,
+        make_success,
         read_file_content,
         resolve_path,
     )
@@ -39,7 +41,9 @@ except ImportError:
         format_csv,
         format_error,
         guess_file_type,
+        make_error,
         make_result,
+        make_success,
         read_file_content,
         resolve_path,
     )
@@ -74,32 +78,32 @@ def file_tools_listdir(
     """
     # ── 参数校验 ──
     if recursive not in (1, 2, -1):
-        return (
+        return make_error(
             f"列出目录失败，因为 recursive 参数值 {recursive} 不合法。"
             f"合法值为：1（当前目录）、2（包含一层子目录）、-1（递归）。"
         )
 
     resolved = resolve_path(path)
     if not os.path.isdir(resolved):
-        return (
+        return make_error(
             f"列出目录失败，因为路径「{resolved}」不存在或不是一个目录。"
         )
 
     if start < 1:
-        return (
+        return make_error(
             f"列出目录失败，因为 start 参数值 {start} 不合法。"
             f"start 表示「从第几个文件开始显示」，最小值为 1。"
         )
 
     if count < 1 or count > 500:
-        return (
+        return make_error(
             f"列出目录失败，因为 count 参数值 {count} 不合法。"
             f"count 范围为 1~500。"
         )
 
     valid_sort = {"name", "size", "permissions", "type", "modified_at", "created_at", "extension"}
     if sort_by not in valid_sort:
-        return (
+        return make_error(
             f"列出目录失败，因为 sort_by 参数值「{sort_by}」不合法。"
             f"合法值为：{', '.join(sorted(valid_sort))}。"
         )
@@ -181,7 +185,7 @@ def file_tools_listdir(
         _scan(resolved, 1, 99999)
 
     if not rows:
-        return "（空目录，无文件）"
+        return make_success("（空目录，无文件）")
 
     # ── 排序 ──
     if sort_by == "name":
@@ -193,7 +197,7 @@ def file_tools_listdir(
     total = len(rows)
     start_idx = start - 1
     if start_idx >= total:
-        return f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）"
+        return make_success(f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）")
 
     end_idx = min(start_idx + count, total)
     page = rows[start_idx:end_idx]
@@ -221,7 +225,7 @@ def file_tools_listdir(
     if file_count >= max_files:
         output += "\n目标文件夹搜索文件超过10000条，当前可以通过翻页 获取前10000条文件信息。如需获取更多的文件条目，请尝试其他方法。\n"
 
-    return output
+    return make_success(output)
 
 
 # ── 2. file_tools_info ────────────────────────────────────
@@ -237,19 +241,19 @@ def file_tools_info(
     """
     resolved = resolve_path(path)
     if not os.path.exists(resolved):
-        return format_error(
+        return make_error(format_error(
             "查看文件信息",
             f"路径「{resolved}」不存在",
             "请使用 file_tools_listdir 确认文件是否存在，或检查路径拼写是否正确。",
-        )
+        ))
 
     try:
         st = os.stat(resolved)
     except OSError as e:
-        return json.dumps({
+        return make_success(json.dumps({
             "path": resolved,
             "error": f"无法读取文件元数据: {e}",
-        }, ensure_ascii=False)
+        }, ensure_ascii=False))
 
     info: Dict[str, Any] = {
         "path": resolved,
@@ -263,7 +267,7 @@ def file_tools_info(
         "modified_at": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    return json.dumps(info, ensure_ascii=False, indent=2)
+    return make_success(json.dumps(info, ensure_ascii=False, indent=2))
 
 
 # ── 3. file_tools_guess ───────────────────────────────────

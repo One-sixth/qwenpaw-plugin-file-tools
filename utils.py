@@ -179,6 +179,52 @@ def make_result(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> str:
         return text[:max_chars] + "\n<<truncated>>"
     return text
 
+# ── ToolChunk 结果封装 ────────────────────────────────────
+
+
+def make_success(text: str) -> "ToolChunk":
+    """构建成功结果。
+
+    Args:
+        text: 显示文本内容
+    """
+    _import_toolchunk()
+    return _ToolChunk(
+        is_last=True,
+        state=_ToolResultState.SUCCESS,
+        content=[_TextBlock(type="text", text=text)],
+    )
+
+
+def make_error(text: str) -> "ToolChunk":
+    """构建错误结果。
+
+    Args:
+        text: 错误提示文本
+    """
+    _import_toolchunk()
+    return _ToolChunk(
+        is_last=True,
+        state=_ToolResultState.ERROR,
+        content=[_TextBlock(type="text", text=text)],
+    )
+
+
+_ToolChunk = None
+_ToolResultState = None
+_TextBlock = None
+
+
+def _import_toolchunk():
+    """延迟导入 agentscope 类型，避免模块级依赖。"""
+    global _ToolChunk, _ToolResultState, _TextBlock
+    if _ToolChunk is None:
+        from agentscope.message import ToolResultState, TextBlock
+        from agentscope.tool import ToolChunk
+
+        _ToolChunk = ToolChunk
+        _ToolResultState = ToolResultState
+        _TextBlock = TextBlock
 
 # ── 备份提示 ──────────────────────────────────────────────
 

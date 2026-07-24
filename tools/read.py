@@ -20,6 +20,8 @@ try:
         DEFAULT_MAX_CHARS,
         format_csv,
         format_error,
+        make_error,
+        make_success,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -29,6 +31,8 @@ except ImportError:
         DEFAULT_MAX_CHARS,
         format_csv,
         format_error,
+        make_error,
+        make_success,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -61,19 +65,17 @@ def file_tools_read_lines(
     resolved = resolve_path(path)
 
     if line_count == 0:
-        return "按行读取失败，因为 line_count=0 没有意义。请设置 line_count=-1 读取到末尾，或设为一个正整数。"
+        return make_error("按行读取失败，因为 line_count=0 没有意义。请设置 line_count=-1 读取到末尾，或设为一个正整数。")
     if start_line < 1:
-        return f"按行读取失败，因为起始行号 {start_line} 不合法。行号从 1 开始。"
+        return make_error(f"按行读取失败，因为起始行号 {start_line} 不合法。行号从 1 开始。")
 
     if not os.path.isfile(resolved):
-        return (
-            f"按行读取失败，因为文件「{resolved}」不存在。"
-        )
+        return make_error(f"按行读取失败，因为文件「{resolved}」不存在。")
 
     try:
         lines, resolved_encoding = read_file_lines(resolved, encoding)
     except Exception as e:
-        return f"按行读取失败，因为读取文件时出错：{e}。"
+        return make_error(f"按行读取失败，因为读取文件时出错：{e}。")
 
     # 空文件（[""]）视为0行
     if len(lines) == 1 and lines[0] == "":
@@ -81,7 +83,7 @@ def file_tools_read_lines(
 
     total_lines = len(lines)
     if start_line > total_lines + 1:
-        return format_error("按行读取", f"文件共 {total_lines} 行，起始行号 {start_line} 超出范围")
+        return make_error(format_error("按行读取", f"文件共 {total_lines} 行，起始行号 {start_line} 超出范围"))
 
     actual_start = start_line - 1
     if line_count == -1:
@@ -124,7 +126,7 @@ def file_tools_read_lines(
         next_line = row_num
         result += f"\n`<<truncated>>` 内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
 
-    return result
+    return make_success(result)
 
 
 # ── 7. file_tools_read_block ──────────────────────────────

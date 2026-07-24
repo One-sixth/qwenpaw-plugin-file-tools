@@ -695,7 +695,7 @@ def file_tools_indent_lines(
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
     encoding: str = "auto",
 ) -> str:
-    """调整文件中指定行范围的行首缩进，支持增加（expand）和减少（shrink）两种模式。修改前自动备份。shrink 模式最多删除到行首非空白字符为止，不会删除非空白内容。返回时显示 +/- diff 格式预览（只显示有变化的行）。
+    """调整文件中指定行范围的行首缩进，可以轻松调整代码段的缩进。支持增加（expand）和减少（shrink）两种模式。修改前自动备份。shrink 模式最多删除到行首非空白字符为止，不会删除非空白内容。返回时显示 +/- diff 格式预览（只显示有变化的行）。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。

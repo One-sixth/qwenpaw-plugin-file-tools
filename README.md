@@ -29,7 +29,7 @@
 | `file_tools_delete_lines` | 删除指定行区间 |
 | `file_tools_replace` | 查找替换（子串匹配，支持 dry_run） |
 | `file_tools_regex_replace` | 正则替换（支持跨行，支持 dry_run） |
-| `file_tools_indent_lines` | 调整行首缩进（expand/shrink） |
+| `file_tools_indent_lines` | 调整行首缩进（expand/shrink），可以轻松调整代码段的缩进 |
 | `file_tools_write` | 全量写入文件（原子写入，自动备份） |
 
 ### 安全文件操作类

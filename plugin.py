@@ -189,7 +189,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_indent_lines",
             tool_func=file_tools_indent_lines,
-            description="调整行首缩进（expand/shrink）。自动备份。",
+            description="调整行首缩进（expand/shrink），可以轻松调整代码段的缩进。自动备份。",
             icon="📐",
             tool_type="file",
             target_param="path",

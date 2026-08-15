@@ -1,7 +1,7 @@
 {
   "id": "qwenpaw-plugin-file-tools",
   "name": "QwenPaw增强文件工具",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "type": "tool",
   "description": "补充 QwenPaw 缺失的文件操作能力：安全文件操作、行级编辑、文件信息、文本搜索、批量处理、历史回滚、回收站操作、字节级操作。",
   "author": "onesixth",

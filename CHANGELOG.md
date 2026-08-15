@@ -1,5 +1,20 @@
 # 更新日志
 
+## v1.2.2 (2026-08-15)
+
+> 字符串数字参数兼容 + 报错消息优化 + 行尾统一
+
+### 变更
+- **整数参数兼容字符串输入**：16 个工具、32 个整数参数（行号/位置/数量/偏移量）类型从 `int` 放宽为 `int | str`，LLM 传 `"123"` 字符串也能正常工作
+  - 新增 `parse_int()` 统一解析：十进制数字字符串（含负号）合法，`"abc"`/`"1.5"`/`True` 等非法输入报错「xxx 参数应当输入整数」
+  - 涉及工具：`replace_lines`、`insert_lines`、`delete_lines`、`replace`、`regex_replace`、`indent_lines`、`read_lines`、`read_block`、`regex`、`listdir`、`diff`、`undo`、`read_bytes`、`write_bytes`、`find_bytes`、`replace_bytes`
+- **未找到匹配不再回显源文本**：`file_tools_replace` / `file_tools_regex_replace` 未找到匹配时去掉 old_text/pattern 全文回显（长文本会刷屏），保留文件路径和行范围定位信息
+- **行尾统一**：全部 `.py` 文件统一为 Windows CRLF 行尾
+
+### 测试
+- 新增 36 个测试（`parse_int` 单元测试 + 各工具字符串参数兼容/非法报错），全量 401 个测试通过
+- 同步更新 `tools_schema.json`（整数参数 schema 变为 `anyOf: [integer, string]`）
+
 ## v1.2.1 (2026-07-25)
 
 > 工具描述优化

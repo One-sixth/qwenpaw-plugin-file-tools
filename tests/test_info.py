@@ -432,3 +432,37 @@ class TestHistory:
         for entry in data["history"]:
             assert "number" in entry or "history_number" in entry
             assert "created_at" in entry
+
+class TestStrNumParams:
+    """数字参数兼容字符串输入。"""
+
+    def test_listdir_string_params_ok(self, tmp_dir):
+        os.makedirs(os.path.join(tmp_dir, "sub1"), exist_ok=True)
+        result = file_tools_listdir(tmp_dir, recursive="2", start="1", count="500")
+        assert "sub1" in result.content[0].text
+
+    def test_listdir_illegal_count(self, tmp_dir):
+        result = file_tools_listdir(tmp_dir, count="abc")
+        assert "失败" in result.content[0].text
+        assert "count 参数应当输入整数" in result.content[0].text
+
+    def test_diff_string_params_ok(self, tmp_dir):
+        path_a = os.path.join(tmp_dir, "a.txt")
+        path_b = os.path.join(tmp_dir, "b.txt")
+        with open(path_a, "w", encoding="utf-8") as f:
+            f.write("line1\nline2\n")
+        with open(path_b, "w", encoding="utf-8") as f:
+            f.write("line1\nCHANGED\n")
+        result = file_tools_diff(path_a, path_b, start="1", count="10", max_chars="2048")
+        assert "CHANGED" in result.content[0].text
+
+    def test_diff_illegal_start(self, tmp_dir):
+        path_a = os.path.join(tmp_dir, "a.txt")
+        path_b = os.path.join(tmp_dir, "b.txt")
+        with open(path_a, "w", encoding="utf-8") as f:
+            f.write("line1\n")
+        with open(path_b, "w", encoding="utf-8") as f:
+            f.write("line2\n")
+        result = file_tools_diff(path_a, path_b, start="x")
+        assert "失败" in result.content[0].text
+        assert "start 参数应当输入整数" in result.content[0].text

@@ -7,6 +7,7 @@
 import logging
 import os
 import shutil
+from typing import Optional, Union
 
 try:
     from ..backup.manager import backup_file
@@ -18,6 +19,7 @@ try:
         make_success,
         format_hex,
         parse_hex,
+        parse_int,
         resolve_path,
     )
 except ImportError:
@@ -30,6 +32,7 @@ except ImportError:
         make_success,
         format_hex,
         parse_hex,
+        parse_int,
         resolve_path,
     )
 
@@ -43,19 +46,29 @@ _READ_MAX_LENGTH = 4096
 
 def file_tools_read_bytes(
     path: str,
-    offset: int = 0,
-    length: int = 512,
-    group_size: int = 16,
+    offset: Union[int, str] = 0,
+    length: Union[int, str] = 512,
+    group_size: Union[int, str] = 16,
 ) -> str:
     """读取二进制文件的指定字节范围，返回全大写 hex 字符串。支持指定起始偏移量和读取长度，可自定义每行显示的字节数。一次最多读取 4096 字节——超过时请分多次读取，用 offset 逐步推进。返回时附带实际读取字节数和文件总大小等信息。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        offset: 起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。
-        length: 读取长度（字节），默认 512。上限 4096，超过时报错提示分多次读取。不能为负数。
-        group_size: 每行显示的字节数。-1=不分组（hex 连成一行），0=报错，>0=每行显示指定字节数（默认 16）。
+        offset: 起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。支持整数或十进制数字字符串。
+        length: 读取长度（字节），默认 512。上限 4096，超过时报错提示分多次读取。不能为负数。支持整数或十进制数字字符串。
+        group_size: 每行显示的字节数。-1=不分组（hex 连成一行），0=报错，>0=每行显示指定字节数（默认 16）。支持整数或十进制数字字符串。
     """
     resolved = resolve_path(path)
+
+    offset, err = parse_int(offset, "offset")
+    if err:
+        return make_error("读取", err)
+    length, err = parse_int(length, "length")
+    if err:
+        return make_error("读取", err)
+    group_size, err = parse_int(group_size, "group_size")
+    if err:
+        return make_error("读取", err)
 
     if not os.path.isfile(resolved):
         return make_error("读取", f"文件「{resolved}」不存在")
@@ -110,7 +123,7 @@ def file_tools_read_bytes(
 def file_tools_write_bytes(
     path: str,
     content: str,
-    offset: int = -1,
+    offset: Union[int, str] = -1,
     skip_backup: bool = False,
 ) -> str:
     """写入二进制文件内容，支持全量覆盖和部分覆盖两种模式。全量覆盖（offset=-1）时自动备份并原子写入，部分覆盖（offset>=0）时从指定偏移量开始覆写、不改变文件大小、不触发备份。所有输入为 hex 字符串（全大写输出）。备份后的文件可通过 file_tools_undo 恢复。
@@ -118,10 +131,14 @@ def file_tools_write_bytes(
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。部分覆盖时文件必须先存在。
         content: 要写入的字节数据（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。去掉空格后长度必须是 2 的倍数（每个字节 2 个 hex 字符）。
-        offset: 写入模式。-1=全量覆盖（默认，先备份再原子写入），>=0=部分覆盖（从该偏移量开始覆写，不备份不改变文件大小）。
+        offset: 写入模式。-1=全量覆盖（默认，先备份再原子写入），>=0=部分覆盖（从该偏移量开始覆写，不备份不改变文件大小）。支持整数或十进制数字字符串。
         skip_backup: 是否跳过备份。仅全量覆盖（offset=-1）时有效。大文件可设为 true 提高速度。默认 false。
     """
     resolved = resolve_path(path)
+
+    offset, err = parse_int(offset, "offset")
+    if err:
+        return make_error("写入", err)
 
     # 解析 hex
     try:
@@ -219,18 +236,25 @@ def _build_write_full_result(
 def file_tools_find_bytes(
     path: str,
     pattern: str,
-    offset: int = 0,
-    count: int = -1,
+    offset: Union[int, str] = 0,
+    count: Union[int, str] = -1,
 ) -> str:
     """在二进制文件中精确查找字节序列，返回 CSV 格式的匹配偏移量列表（十进制）。精确匹配，不支持通配符或模糊匹配。未匹配到时返回提示信息。返回结果包含 offset 列，每行一个十进制偏移量。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
         pattern: 要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。去掉空格后长度必须是 2 的倍数。不能为空。
-        offset: 搜索起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。
-        count: 最多返回几个匹配。-1=全部返回（默认），>0=限制返回数量。传 0 报错。
+        offset: 搜索起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。支持整数或十进制数字字符串。
+        count: 最多返回几个匹配。-1=全部返回（默认），>0=限制返回数量。传 0 报错。支持整数或十进制数字字符串。
     """
     resolved = resolve_path(path)
+
+    offset, err = parse_int(offset, "offset")
+    if err:
+        return make_error("查找", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("查找", err)
 
     if not os.path.isfile(resolved):
         return make_error("查找", f"文件「{resolved}」不存在")
@@ -301,8 +325,8 @@ def file_tools_replace_bytes(
     path: str,
     old_bytes: str,
     new_bytes: str,
-    count: int = 1,
-    offset: int = 0,
+    count: Union[int, str] = 1,
+    offset: Union[int, str] = 0,
     skip_backup: bool = False,
 ) -> str:
     """在二进制文件中查找并替换字节序列，支持变长替换（old_bytes 和 new_bytes 长度可以不同）。从后往前逐个替换，避免偏移量变化导致替换位置错误。修改前自动备份（除非 skip_backup=True），使用原子写入避免文件损坏。备份后的文件可通过 file_tools_undo 恢复。返回替换位置（十进制偏移量），CSV 格式。
@@ -311,11 +335,18 @@ def file_tools_replace_bytes(
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
         old_bytes: 要查找的字节序列（hex 字符串）。允许空格，大小写不敏感，不可以 0x 或 \\x 开头。不能为空。
         new_bytes: 替换成的字节序列（hex 字符串）。空字符串表示删除匹配内容。可以与 old_bytes 长度不同——替换后文件大小会变。
-        count: 替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。
-        offset: 搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。
+        count: 替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。支持整数或十进制数字字符串。
+        offset: 搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。支持整数或十进制数字字符串。
         skip_backup: 是否跳过备份。大文件可设为 true 提高写入速度。默认 false。
     """
     resolved = resolve_path(path)
+
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("替换", err)
+    offset, err = parse_int(offset, "offset")
+    if err:
+        return make_error("替换", err)
 
     if not os.path.isfile(resolved):
         return make_error("替换", f"文件「{resolved}」不存在")

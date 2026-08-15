@@ -17,7 +17,7 @@ import os
 import stat
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from ..backup.manager import list_history as _list_history
@@ -30,6 +30,7 @@ try:
         make_error,
         make_result,
         make_success,
+        parse_int,
         read_file_content,
         resolve_path,
     )
@@ -44,6 +45,7 @@ except ImportError:
         make_error,
         make_result,
         make_success,
+        parse_int,
         read_file_content,
         resolve_path,
     )
@@ -56,11 +58,11 @@ logger = logging.getLogger(__name__)
 
 def file_tools_listdir(
     path: str,
-    recursive: int = 1,
+    recursive: Union[int, str] = 1,
     columns: Optional[List[str]] = None,
     absolute: bool = False,
-    start: int = 1,
-    count: int = 500,
+    start: Union[int, str] = 1,
+    count: Union[int, str] = 500,
     sort_by: str = "name",
     ascending: bool = True,
 ) -> str:
@@ -68,15 +70,25 @@ def file_tools_listdir(
 
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。
+        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。支持整数或十进制数字字符串。
         columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
         absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。
-        start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。
-        count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。
+        start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。支持整数或十进制数字字符串。
+        count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。
         sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。
         ascending: 排序方向。True=升序排列（默认），False=降序排列。
     """
     # ── 参数校验 ──
+    recursive, err = parse_int(recursive, "recursive")
+    if err:
+        return make_error("列出目录", err)
+    start, err = parse_int(start, "start")
+    if err:
+        return make_error("列出目录", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("列出目录", err)
+
     if recursive not in (1, 2, -1):
         return make_error(
             f"列出目录失败，因为 recursive 参数值 {recursive} 不合法。"
@@ -309,21 +321,31 @@ def file_tools_guess(
 def file_tools_diff(
     path_a: str,
     path_b: str,
-    start: int = 1,
-    count: int = 10,
-    max_chars: int = 2048,
+    start: Union[int, str] = 1,
+    count: Union[int, str] = 10,
+    max_chars: Union[int, str] = 2048,
 ) -> str:
     """对比两个文件的差异，返回 unified diff 格式。支持 hunk 分页，可指定从第几个差异块开始显示。文件相同时返回「文件相同，没有差异。」
 
     Args:
         path_a: 旧文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         path_b: 新文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        start: 起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。
-        count: 最多显示多少个差异块，默认 10。
-        max_chars: 返回内容总字符上限，默认 2048。超过时自动截断。
+        start: 起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。支持整数或十进制数字字符串。
+        count: 最多显示多少个差异块，默认 10。支持整数或十进制数字字符串。
+        max_chars: 返回内容总字符上限，默认 2048。超过时自动截断。支持整数或十进制数字字符串。
     """
     resolved_a = resolve_path(path_a)
     resolved_b = resolve_path(path_b)
+
+    start, err = parse_int(start, "start")
+    if err:
+        return make_error("对比", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("对比", err)
+    max_chars, err = parse_int(max_chars, "max_chars")
+    if err:
+        return make_error("对比", err)
 
     if not os.path.isfile(resolved_a):
         return make_error(f"对比失败，因为找不到旧文件「{resolved_a}」。请确认路径是否正确。")

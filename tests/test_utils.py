@@ -9,6 +9,7 @@ from utils import (
     guess_file_type,
     make_result,
     normalize_newlines,
+    parse_int,
     read_file_content,
     read_file_lines,
     resolve_path,
@@ -188,3 +189,47 @@ class TestReadFileContent:
     def test_gbk(self, gbk_file):
         content, enc = read_file_content(gbk_file)
         assert "你好世界" in content
+
+class TestParseInt:
+    """parse_int 兼容 LLM 传字符串数字参数。"""
+
+    def test_int_passthrough(self):
+        assert parse_int(123, "start_line") == (123, None)
+        assert parse_int(-1, "offset") == (-1, None)
+        assert parse_int(0, "count") == (0, None)
+
+    def test_none_passthrough(self):
+        assert parse_int(None, "end_line") == (None, None)
+
+    def test_valid_decimal_string(self):
+        assert parse_int("123", "start_line") == (123, None)
+        assert parse_int("-1", "offset") == (-1, None)
+        assert parse_int("0", "count") == (0, None)
+
+    def test_string_with_spaces(self):
+        assert parse_int(" 123 ", "start_line") == (123, None)
+        assert parse_int("\t42\n", "count") == (42, None)
+
+    def test_bool_rejected(self):
+        val, err = parse_int(True, "start_line")
+        assert val is None
+        assert "参数应当输入整数" in err
+
+    def test_illegal_strings(self):
+        for bad in ("abc", "1.5", "12a", "12 3", "", "--1", "+5", "0x10"):
+            val, err = parse_int(bad, "count")
+            assert val is None, f"{bad!r} 应报错"
+            assert "参数应当输入整数" in err
+
+    def test_non_numeric_types(self):
+        val, err = parse_int(3.14, "count")
+        assert val is None
+        assert "参数应当输入整数" in err
+        val, err = parse_int([1], "count")
+        assert val is None
+        assert "参数应当输入整数" in err
+
+    def test_error_message_contains_value(self):
+        _, err = parse_int("abc", "start_line")
+        assert "start_line" in err
+        assert "「abc」" in err

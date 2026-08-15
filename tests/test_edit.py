@@ -891,3 +891,62 @@ class TestIndentLines:
         assert lines[1] == "1tab"
         # "       8spaces" → 删4个空格，变成"   8spaces"
         assert lines[2] == "   8spaces"
+
+class TestStrLineParams:
+    """行号/数字参数兼容字符串输入（LLM 常传 "123"）。"""
+
+    def test_replace_lines_string_ok(self, multi_line_file):
+        result = file_tools_replace_lines(multi_line_file, "2", "3", "REPLACED")
+        assert "成功替换" in result.content[0].text
+        assert "REPLACED" in _read_file(multi_line_file)
+
+    def test_replace_lines_illegal_string(self, multi_line_file):
+        result = file_tools_replace_lines(multi_line_file, "abc", "3", "X")
+        assert "失败" in result.content[0].text
+        assert "start_line 参数应当输入整数" in result.content[0].text
+
+    def test_insert_lines_string_ok(self, multi_line_file):
+        result = file_tools_insert_lines(multi_line_file, "2", "INSERTED")
+        assert "成功插入" in result.content[0].text
+        assert "INSERTED" in _read_file(multi_line_file)
+
+    def test_insert_lines_illegal_string(self, multi_line_file):
+        result = file_tools_insert_lines(multi_line_file, "2.5", "X")
+        assert "失败" in result.content[0].text
+        assert "line 参数应当输入整数" in result.content[0].text
+
+    def test_delete_lines_string_ok(self, multi_line_file):
+        result = file_tools_delete_lines(multi_line_file, "1", "2")
+        assert "成功删除" in result.content[0].text
+        lines = _read_lines(multi_line_file)
+        assert "line1" not in lines
+        assert "line2" not in lines
+        assert lines[0] == "line3"
+
+    def test_replace_string_params_ok(self, multi_line_file):
+        result = file_tools_replace(multi_line_file, "line", "ROW", start_line="1", end_line="20", count="-1")
+        assert "成功替换" in result.content[0].text
+        assert "ROW" in _read_file(multi_line_file)
+
+    def test_replace_illegal_count(self, multi_line_file):
+        result = file_tools_replace(multi_line_file, "line", "ROW", count="abc")
+        assert "失败" in result.content[0].text
+        assert "count 参数应当输入整数" in result.content[0].text
+
+    def test_regex_replace_string_params_ok(self, multi_line_file):
+        result = file_tools_regex_replace(
+            multi_line_file, r"line(\d+)", r"item_\1", start_line="1", count="-1"
+        )
+        assert "成功替换" in result.content[0].text
+        assert "item_1" in _read_file(multi_line_file)
+
+    def test_indent_lines_string_ok(self, multi_line_file):
+        result = file_tools_indent_lines(multi_line_file, start_line="1", end_line="3", count="2")
+        assert "成功" in result.content[0].text
+        lines = _read_lines(multi_line_file)
+        assert lines[0].startswith("  ")
+
+    def test_indent_lines_illegal_count(self, multi_line_file):
+        result = file_tools_indent_lines(multi_line_file, count="x")
+        assert "失败" in result.content[0].text
+        assert "count 参数应当输入整数" in result.content[0].text

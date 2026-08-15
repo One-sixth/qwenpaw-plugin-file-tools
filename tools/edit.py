@@ -17,7 +17,7 @@ Windows 上读写时 \\\\n ↔ \\\\r\\\\n 由 Python 自动处理。
 import logging
 import os
 import re as re_module
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 try:
     from ..backup.manager import backup_file
@@ -29,6 +29,7 @@ try:
         make_error,
         make_success,
         normalize_newlines,
+        parse_int,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -43,6 +44,7 @@ except ImportError:
         make_error,
         make_success,
         normalize_newlines,
+        parse_int,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -127,8 +129,8 @@ def file_tools_append(
 
 def file_tools_replace_lines(
     path: str,
-    start_line: int,
-    end_line: int,
+    start_line: Union[int, str],
+    end_line: Union[int, str],
     content: str,
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
@@ -137,13 +139,20 @@ def file_tools_replace_lines(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。
-        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。
+        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。支持整数或十进制数字字符串。
+        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         content: 替换内容。用 \\n 拆成多行，因此可以增加或减少行数。\\r\\n/\\r 写入前自动统一为 \\n。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("替换行", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("替换行", err)
 
     if not os.path.isfile(resolved):
         return make_error("替换行", f"文件「{resolved}」不存在")
@@ -260,7 +269,7 @@ def _build_replace_preview(lines_before, lines_after, start_line, end_line, old_
 
 def file_tools_insert_lines(
     path: str,
-    line: int,
+    line: Union[int, str],
     content: str,
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
@@ -269,12 +278,16 @@ def file_tools_insert_lines(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        line: 插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。
+        line: 插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。支持整数或十进制数字字符串。
         content: 要插入的文本内容。用 \\n 拆成多行，因此可以一次插入多行。\\r\\n/\\r 写入前自动统一为 \\n。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
+
+    line, err = parse_int(line, "line")
+    if err:
+        return make_error("插入行", err)
 
     if not os.path.isfile(resolved):
         return make_error("插入行", f"文件「{resolved}」不存在")
@@ -336,8 +349,8 @@ def file_tools_insert_lines(
 
 def file_tools_delete_lines(
     path: str,
-    start_line: int,
-    end_line: int,
+    start_line: Union[int, str],
+    end_line: Union[int, str],
     encoding: str = "auto",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
 ) -> str:
@@ -345,12 +358,19 @@ def file_tools_delete_lines(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。
-        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。
+        start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。支持整数或十进制数字字符串。
+        end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("删除行", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("删除行", err)
 
     if not os.path.isfile(resolved):
         return make_error("删除行", f"文件「{resolved}」不存在")
@@ -412,9 +432,9 @@ def file_tools_replace(
     path: str,
     old_text: str,
     new_text: str,
-    start_line: int = 1,
-    end_line: Optional[int] = None,
-    count: int = 1,
+    start_line: Union[int, str] = 1,
+    end_line: Optional[Union[int, str]] = None,
+    count: Union[int, str] = 1,
     encoding: str = "auto",
     dry_run: bool = False,
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
@@ -425,14 +445,24 @@ def file_tools_replace(
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
         old_text: 要查找的文本，精确字串匹配。不做正则转义，传入真实换行符 \\n 即可跨行匹配。不能为空。
         new_text: 替换成的文本。不做转义处理，与 old_text 的匹配方式一致。
-        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
-        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
-        count: 替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。
+        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。
+        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
+        count: 替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("替换", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("替换", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("替换", err)
 
     if not os.path.isfile(resolved):
         return make_error("替换", f"文件「{resolved}」不存在")
@@ -472,7 +502,7 @@ def file_tools_replace(
     if match_count == 0:
         return make_error(
             f"替换失败，因为在「{resolved}」第 {start_line}~{actual_end} 行范围内"
-            f"未找到匹配「{old_text}」的内容。"
+            f"未找到匹配的内容。"
         )
 
     if count == -1:
@@ -541,10 +571,10 @@ def file_tools_regex_replace(
     path: str,
     pattern: str,
     replacement: str,
-    start_line: int = 1,
-    end_line: Optional[int] = None,
-    start: int = 1,
-    count: int = 1,
+    start_line: Union[int, str] = 1,
+    end_line: Optional[Union[int, str]] = None,
+    start: Union[int, str] = 1,
+    count: Union[int, str] = 1,
     encoding: str = "auto",
     dry_run: bool = False,
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
@@ -555,15 +585,28 @@ def file_tools_regex_replace(
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
         pattern: 正则表达式，Python re 语法。拼接行范围后整体匹配，支持跨行匹配。不能为空字符串。
         replacement: 替换字符串，支持 \\1、\\g<name> 等反向引用。Python re.sub 的 expand 语义。
-        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
-        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
-        start: 从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。
-        count: 替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。
+        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。
+        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
+        start: 从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。支持整数或十进制数字字符串。
+        count: 替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("正则替换", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("正则替换", err)
+    start, err = parse_int(start, "start")
+    if err:
+        return make_error("正则替换", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("正则替换", err)
 
     if not os.path.isfile(resolved):
         return make_error("正则替换", f"文件「{resolved}」不存在")
@@ -616,7 +659,7 @@ def file_tools_regex_replace(
     if total_matches == 0:
         return make_error(
             f"正则替换失败，因为在「{resolved}」第 {start_line}~{actual_end} 行范围内"
-            f"未找到匹配「{pattern}」的内容。"
+            f"未找到匹配的内容。"
         )
 
     # 计算要替换的范围（从后往前）
@@ -687,10 +730,10 @@ def file_tools_regex_replace(
 
 def file_tools_indent_lines(
     path: str,
-    start_line: int = 1,
-    end_line: Optional[int] = None,
+    start_line: Union[int, str] = 1,
+    end_line: Optional[Union[int, str]] = None,
     mode: str = "expand",
-    count: int = 4,
+    count: Union[int, str] = 4,
     char: str = " ",
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
     encoding: str = "auto",
@@ -699,15 +742,25 @@ def file_tools_indent_lines(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        start_line: 起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。
-        end_line: 结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
+        start_line: 起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。
+        end_line: 结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
         mode: 缩进模式。expand=增加缩进（默认），shrink=减少缩进。shrink 时最多删除到行首第一个非空白字符。
-        count: 添加或删除的空白字符数量。默认 4。必须 >= 0。
+        count: 添加或删除的空白字符数量。默认 4。必须 >= 0。支持整数或十进制数字字符串。
         char: 填充字符。默认空格（' '），也可传 '\\t' 使用制表符。仅 expand 模式使用。
         line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("缩进调整", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("缩进调整", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("缩进调整", err)
 
     if not os.path.isfile(resolved):
         return make_error("缩进调整", f"文件「{resolved}」不存在")

@@ -227,3 +227,17 @@ class TestCleanupOldBackups:
             mapping = json.load(f)
         assert "validhash" in mapping
         assert "stalehash" not in mapping, "无效的 files.json 条目应被移除"
+class TestUndoStrParams:
+    """history_number 兼容字符串输入。"""
+
+    def test_undo_string_ok(self, tmp_file):
+        file_tools_replace_lines(tmp_file, "1", "1", "MODIFIED")
+        result = file_tools_undo(tmp_file, "1")
+        assert "已恢复" in result.content[0].text
+        assert "line1" in open(tmp_file, encoding="utf-8").read()
+
+    def test_undo_illegal_string(self, tmp_file):
+        file_tools_replace_lines(tmp_file, "1", "1", "MODIFIED")
+        result = file_tools_undo(tmp_file, "abc")
+        assert "失败" in result.content[0].text
+        assert "history_number 参数应当输入整数" in result.content[0].text

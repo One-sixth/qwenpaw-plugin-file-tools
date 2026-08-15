@@ -473,3 +473,36 @@ class TestRegex:
         assert result["total_matches"] == 1
         result2 = self._parse(file_tools_regex(path, pattern=r"foo\*bar"))
         assert result2["total_matches"] == 1
+
+class TestStrLineParams:
+    """行号/数字参数兼容字符串输入。"""
+
+    def test_read_lines_string_ok(self, multi_line_file):
+        result = file_tools_read_lines(multi_line_file, start_line="2", line_count="3")
+        assert "2 > line2" in result.content[0].text
+        assert "4 > line4" in result.content[0].text
+
+    def test_read_lines_illegal_string(self, multi_line_file):
+        result = file_tools_read_lines(multi_line_file, start_line="abc")
+        assert "失败" in result.content[0].text
+        assert "start_line 参数应当输入整数" in result.content[0].text
+
+    def test_read_block_string_ok(self, multi_line_file):
+        result = file_tools_read_block(multi_line_file, "1", "3", start_col="1", end_col="10")
+        assert "line1" in result.content[0].text
+        assert "line3" in result.content[0].text
+
+    def test_read_block_illegal_string(self, multi_line_file):
+        result = file_tools_read_block(multi_line_file, "1.5", "3")
+        assert "失败" in result.content[0].text
+        assert "start_row 参数应当输入整数" in result.content[0].text
+
+    def test_regex_string_params_ok(self, multi_line_file):
+        result = file_tools_regex(multi_line_file, r"line(\d+)", start_line="1", count="5")
+        data = json.loads(result.content[0].text)
+        assert data["total_matches"] >= 5
+
+    def test_regex_illegal_count(self, multi_line_file):
+        result = file_tools_regex(multi_line_file, r"line", count="abc")
+        assert "失败" in result.content[0].text
+        assert "count 参数应当输入整数" in result.content[0].text

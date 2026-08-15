@@ -11,9 +11,16 @@
             "type": "string"
           },
           "recursive": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。",
-            "type": "integer"
+            "description": "递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。支持整数或十进制数字字符串。"
           },
           "columns": {
             "anyOf": [
@@ -36,14 +43,28 @@
             "type": "boolean"
           },
           "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。",
-            "type": "integer"
+            "description": "起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 500,
-            "description": "最多返回的文件数，默认 500。范围 1~500，超出时报错。",
-            "type": "integer"
+            "description": "最多返回的文件数，默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。"
           },
           "sort_by": {
             "default": "name",
@@ -117,19 +138,40 @@
             "type": "string"
           },
           "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。",
-            "type": "integer"
+            "description": "起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 10,
-            "description": "最多显示多少个差异块，默认 10。",
-            "type": "integer"
+            "description": "最多显示多少个差异块，默认 10。支持整数或十进制数字字符串。"
           },
           "max_chars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 2048,
-            "description": "返回内容总字符上限，默认 2048。超过时自动截断。",
-            "type": "integer"
+            "description": "返回内容总字符上限，默认 2048。超过时自动截断。支持整数或十进制数字字符串。"
           }
         },
         "required": [
@@ -171,19 +213,40 @@
             "type": "string"
           },
           "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。",
-            "type": "integer"
+            "description": "起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。"
           },
           "line_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 20,
-            "description": "读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。",
-            "type": "integer"
+            "description": "读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。支持整数或十进制数字字符串。"
           },
           "max_chars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 2048,
-            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。",
-            "type": "integer"
+            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -215,27 +278,62 @@
             "type": "string"
           },
           "start_row": {
-            "description": "起始行号，1-based，包含。必须 >= 1。超出文件总行数时报错。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "起始行号，1-based，包含。必须 >= 1。超出文件总行数时报错。支持整数或十进制数字字符串。"
           },
           "end_row": {
-            "description": "结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。"
           },
           "start_col": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。",
-            "type": "integer"
+            "description": "行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。支持整数或十进制数字字符串。"
           },
           "end_col": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 2048,
-            "description": "行内结束列号，1-based，包含。默认 2048。必须 >= start_col。",
-            "type": "integer"
+            "description": "行内结束列号，1-based，包含。默认 2048。必须 >= start_col。支持整数或十进制数字字符串。"
           },
           "max_chars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 2048,
-            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。",
-            "type": "integer"
+            "description": "返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -273,12 +371,22 @@
             "type": "string"
           },
           "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。",
-            "type": "integer"
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "integer"
               },
@@ -287,17 +395,31 @@
               }
             ],
             "default": null,
-            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。"
           },
           "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "从第几个匹配开始显示，1-based。默认 1。最小值为 1。",
-            "type": "integer"
+            "description": "从第几个匹配开始显示，1-based。默认 1。最小值为 1。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 10,
-            "description": "最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。",
-            "type": "integer"
+            "description": "最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -364,12 +486,26 @@
             "type": "string"
           },
           "start_line": {
-            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数+1 时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
-            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。"
           },
           "content": {
             "description": "替换内容。用 \\n 拆成多行，因此可以增加或减少行数。\\r\\n/\\r 写入前自动统一为 \\n。",
@@ -413,8 +549,15 @@
             "type": "string"
           },
           "line": {
-            "description": "插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。支持整数或十进制数字字符串。"
           },
           "content": {
             "description": "要插入的文本内容。用 \\n 拆成多行，因此可以一次插入多行。\\r\\n/\\r 写入前自动统一为 \\n。",
@@ -457,12 +600,26 @@
             "type": "string"
           },
           "start_line": {
-            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
-            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -509,12 +666,22 @@
             "type": "string"
           },
           "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
-            "type": "integer"
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "integer"
               },
@@ -523,12 +690,19 @@
               }
             ],
             "default": null,
-            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。",
-            "type": "integer"
+            "description": "替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -580,12 +754,22 @@
             "type": "string"
           },
           "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
-            "type": "integer"
+            "description": "搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "integer"
               },
@@ -594,17 +778,31 @@
               }
             ],
             "default": null,
-            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+            "description": "搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。"
           },
           "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。",
-            "type": "integer"
+            "description": "从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。",
-            "type": "integer"
+            "description": "替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。支持整数或十进制数字字符串。"
           },
           "encoding": {
             "default": "auto",
@@ -648,12 +846,22 @@
             "type": "string"
           },
           "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。",
-            "type": "integer"
+            "description": "起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。"
           },
           "end_line": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "integer"
               },
@@ -662,7 +870,7 @@
               }
             ],
             "default": null,
-            "description": "结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。"
+            "description": "结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。"
           },
           "mode": {
             "default": "expand",
@@ -670,9 +878,16 @@
             "type": "string"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 4,
-            "description": "添加或删除的空白字符数量。默认 4。必须 >= 0。",
-            "type": "integer"
+            "description": "添加或删除的空白字符数量。默认 4。必须 >= 0。支持整数或十进制数字字符串。"
           },
           "char": {
             "default": " ",
@@ -892,19 +1107,40 @@
             "type": "string"
           },
           "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 0,
-            "description": "起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。",
-            "type": "integer"
+            "description": "起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。支持整数或十进制数字字符串。"
           },
           "length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 512,
-            "description": "读取长度（字节），默认 512。上限 4096，超过时报错提示分多次读取。不能为负数。",
-            "type": "integer"
+            "description": "读取长度（字节），默认 512。上限 4096，超过时报错提示分多次读取。不能为负数。支持整数或十进制数字字符串。"
           },
           "group_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 16,
-            "description": "每行显示的字节数。-1=不分组（hex 连成一行），0=报错，>0=每行显示指定字节数（默认 16）。",
-            "type": "integer"
+            "description": "每行显示的字节数。-1=不分组（hex 连成一行），0=报错，>0=每行显示指定字节数（默认 16）。支持整数或十进制数字字符串。"
           }
         },
         "required": [
@@ -930,9 +1166,16 @@
             "type": "string"
           },
           "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": -1,
-            "description": "写入模式。-1=全量覆盖（默认，先备份再原子写入），>=0=部分覆盖（从该偏移量开始覆写，不备份不改变文件大小）。",
-            "type": "integer"
+            "description": "写入模式。-1=全量覆盖（默认，先备份再原子写入），>=0=部分覆盖（从该偏移量开始覆写，不备份不改变文件大小）。支持整数或十进制数字字符串。"
           },
           "skip_backup": {
             "default": false,
@@ -964,14 +1207,28 @@
             "type": "string"
           },
           "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 0,
-            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。",
-            "type": "integer"
+            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数，超出文件大小报错。支持整数或十进制数字字符串。"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": -1,
-            "description": "最多返回几个匹配。-1=全部返回（默认），>0=限制返回数量。传 0 报错。",
-            "type": "integer"
+            "description": "最多返回几个匹配。-1=全部返回（默认），>0=限制返回数量。传 0 报错。支持整数或十进制数字字符串。"
           }
         },
         "required": [
@@ -1002,14 +1259,28 @@
             "type": "string"
           },
           "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 1,
-            "description": "替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。",
-            "type": "integer"
+            "description": "替换次数。1=只替换第一个匹配（默认），-1=全部替换，>0=限制替换次数。传 0 报错。支持整数或十进制数字字符串。"
           },
           "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "default": 0,
-            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。",
-            "type": "integer"
+            "description": "搜索起始偏移量（字节），默认 0=从文件开头。不能为负数。支持整数或十进制数字字符串。"
           },
           "skip_backup": {
             "default": false,

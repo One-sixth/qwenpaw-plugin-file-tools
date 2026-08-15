@@ -12,6 +12,7 @@ import hashlib
 import io
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -194,6 +195,36 @@ def make_success(text: str) -> "ToolChunk":
         state=_ToolResultState.SUCCESS,
         content=[_TextBlock(type="text", text=text)],
     )
+
+
+def parse_int(value, param_name: str) -> Tuple[Optional[int], Optional[str]]:
+    """将 int 或十进制数字字符串转换为 int。
+
+    兼容 LLM 将数字参数传成字符串（如 "123"）的情况。
+    - int → 原样返回
+    - str → strip 后匹配十进制（可选负号），合法转 int
+    - None → 原样返回（用于 Optional 参数未指定）
+    - 其他 / 非法字符串 → 返回错误消息
+
+    Args:
+        value: 原始值，int / str / None
+        param_name: 参数名，用于错误消息
+
+    Returns:
+        (int_or_None, None) 成功；
+        (None, 错误消息) 非法输入
+    """
+    if value is None:
+        return None, None
+    if isinstance(value, bool):
+        return None, f"{param_name} 参数应当输入整数，收到「{value}」"
+    if isinstance(value, int):
+        return value, None
+    if isinstance(value, str):
+        s = value.strip()
+        if re.fullmatch(r"-?\d+", s):
+            return int(s), None
+    return None, f"{param_name} 参数应当输入整数，收到「{value}」"
 
 
 def make_error(text: str, reason: str = "", suggestion: str = "") -> "ToolChunk":

@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import re as re_module
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from ..utils import (
@@ -22,6 +22,7 @@ try:
         format_error,
         make_error,
         make_success,
+        parse_int,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -33,6 +34,7 @@ except ImportError:
         format_error,
         make_error,
         make_success,
+        parse_int,
         read_file_lines,
         resolve_path,
         truncate_line,
@@ -46,9 +48,9 @@ logger = logging.getLogger(__name__)
 
 def file_tools_read_lines(
     path: str,
-    start_line: int = 1,
-    line_count: int = 20,
-    max_chars: int = 2048,
+    start_line: Union[int, str] = 1,
+    line_count: Union[int, str] = 20,
+    max_chars: Union[int, str] = 2048,
     encoding: str = "auto",
     show_line_number: bool = True,
 ) -> str:
@@ -56,13 +58,23 @@ def file_tools_read_lines(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        start_line: 起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。
-        line_count: 读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。
-        max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。
+        start_line: 起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。
+        line_count: 读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。支持整数或十进制数字字符串。
+        max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认，使用 chardet），也可指定 utf-8、gbk 等 Python 支持的编码名称。
         show_line_number: 行号显示模式。True=每行带行号前缀（默认），False=直接输出原文。
     """
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("按行读取", err)
+    line_count, err = parse_int(line_count, "line_count")
+    if err:
+        return make_error("按行读取", err)
+    max_chars, err = parse_int(max_chars, "max_chars")
+    if err:
+        return make_error("按行读取", err)
 
     if line_count == 0:
         return make_error("按行读取失败，因为 line_count=0 没有意义。请设置 line_count=-1 读取到末尾，或设为一个正整数。")
@@ -134,11 +146,11 @@ def file_tools_read_lines(
 
 def file_tools_read_block(
     path: str,
-    start_row: int,
-    end_row: int,
-    start_col: int = 1,
-    end_col: int = 2048,
-    max_chars: int = 2048,
+    start_row: Union[int, str],
+    end_row: Union[int, str],
+    start_col: Union[int, str] = 1,
+    end_col: Union[int, str] = 2048,
+    max_chars: Union[int, str] = 2048,
     encoding: str = "auto",
     show_line_number: bool = True,
 ) -> str:
@@ -146,15 +158,31 @@ def file_tools_read_block(
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        start_row: 起始行号，1-based，包含。必须 >= 1。超出文件总行数时报错。
-        end_row: 结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。
-        start_col: 行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。
-        end_col: 行内结束列号，1-based，包含。默认 2048。必须 >= start_col。
-        max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。
+        start_row: 起始行号，1-based，包含。必须 >= 1。超出文件总行数时报错。支持整数或十进制数字字符串。
+        end_row: 结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
+        start_col: 行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。支持整数或十进制数字字符串。
+        end_col: 行内结束列号，1-based，包含。默认 2048。必须 >= start_col。支持整数或十进制数字字符串。
+        max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         show_line_number: 行号显示模式。True=每行带行号前缀（默认），False=直接输出原文切片。
     """
     resolved = resolve_path(path)
+
+    start_row, err = parse_int(start_row, "start_row")
+    if err:
+        return make_error("读取矩形块", err)
+    end_row, err = parse_int(end_row, "end_row")
+    if err:
+        return make_error("读取矩形块", err)
+    start_col, err = parse_int(start_col, "start_col")
+    if err:
+        return make_error("读取矩形块", err)
+    end_col, err = parse_int(end_col, "end_col")
+    if err:
+        return make_error("读取矩形块", err)
+    max_chars, err = parse_int(max_chars, "max_chars")
+    if err:
+        return make_error("读取矩形块", err)
 
     if start_col > end_col:
         return make_error(f"读取矩形块失败，因为 start_col ({start_col}) 大于 end_col ({end_col})。")
@@ -230,10 +258,10 @@ def file_tools_read_block(
 def file_tools_regex(
     path: str,
     pattern: str,
-    start_line: int = 1,
-    end_line: Optional[int] = None,
-    start: int = 1,
-    count: int = 10,
+    start_line: Union[int, str] = 1,
+    end_line: Optional[Union[int, str]] = None,
+    start: Union[int, str] = 1,
+    count: Union[int, str] = 10,
     encoding: str = "auto",
 ) -> str:
     """在文件内容中搜索正则表达式，支持跨行匹配，返回 JSON 格式。拼接指定行范围后整体用 finditer 匹配，因此正则可以跨行。matched 字段自动根据捕获组数量决定：0 组=完整匹配串，1 组=提取内容，2+组=列表。超过 250 字符的匹配内容会被截断并附带 note 字段提示。
@@ -241,15 +269,28 @@ def file_tools_regex(
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         pattern: 正则表达式，Python re 语法。支持跨行匹配（拼接行范围后整体用 finditer 匹配）。不能为空。
-        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。
-        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。
-        start: 从第几个匹配开始显示，1-based。默认 1。最小值为 1。
-        count: 最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。
+        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。
+        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
+        start: 从第几个匹配开始显示，1-based。默认 1。最小值为 1。支持整数或十进制数字字符串。
+        count: 最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
     """
     import bisect
 
     resolved = resolve_path(path)
+
+    start_line, err = parse_int(start_line, "start_line")
+    if err:
+        return make_error("正则匹配", err)
+    end_line, err = parse_int(end_line, "end_line")
+    if err:
+        return make_error("正则匹配", err)
+    start, err = parse_int(start, "start")
+    if err:
+        return make_error("正则匹配", err)
+    count, err = parse_int(count, "count")
+    if err:
+        return make_error("正则匹配", err)
 
     if not os.path.isfile(resolved):
         return make_error(

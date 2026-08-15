@@ -454,3 +454,46 @@ class TestReplaceBytes:
         assert "替换成功" in result2.content[0].text
         data2 = _read_bin(path2)
         assert data2 == b"\xff\x03"
+class TestStrNumParams:
+    """数字参数兼容字符串输入。"""
+
+    def test_read_bytes_string_params_ok(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, bytes.fromhex("00 01 02 03 04"))
+        result = file_tools_read_bytes(path, offset="1", length="3", group_size="16")
+        assert "01 02 03" in result.content[0].text
+
+    def test_read_bytes_illegal_offset(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, b"1234")
+        result = file_tools_read_bytes(path, offset="abc")
+        assert "失败" in result.content[0].text
+        assert "offset 参数应当输入整数" in result.content[0].text
+
+    def test_write_bytes_string_offset_ok(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, b"1234")
+        result = file_tools_write_bytes(path, "FF FF", offset="0")
+        assert "成功" in result.content[0].text
+        assert _read_bin(path) == bytes.fromhex("FF FF 33 34")
+
+    def test_find_bytes_string_params_ok(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, bytes.fromhex("00 FF FF 00 FF 00"))
+        result = file_tools_find_bytes(path, "FF FF", offset="0", count="-1")
+        assert "offset" in result.content[0].text
+        assert "1" in result.content[0].text  # 匹配偏移 1
+
+    def test_replace_bytes_string_params_ok(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, bytes.fromhex("00 FF FF 00 FF 00"))
+        result = file_tools_replace_bytes(path, "FF FF", "EE", count="1", offset="0")
+        assert "成功" in result.content[0].text
+        assert _read_bin(path) == bytes.fromhex("00 EE 00 FF 00")
+
+    def test_replace_bytes_illegal_count(self, tmp_dir):
+        path = os.path.join(tmp_dir, "data.bin")
+        _bin_file(path, bytes.fromhex("00 FF 00"))
+        result = file_tools_replace_bytes(path, "FF", "EE", count="0x10")
+        assert "失败" in result.content[0].text
+        assert "count 参数应当输入整数" in result.content[0].text

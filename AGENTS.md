@@ -22,7 +22,7 @@ QwenPaw 文件操作补充插件。注册 26 个 Agent 工具，补充 QwenPaw �
 ## 26 个工具清单
 
 ### 信息读取类（5 个）
-1. `file_tools_listdir` — 列出目录内容
+1. `file_tools_listdir` — 列出目录内容（types/extensions/contains/regex/exclude 五类过滤 + follow_symlink 环检测；路径正斜杠、目录带尾斜杠）
 2. `file_tools_info` — 查看文件元数据（JSON）
 3. `file_tools_guess` — 猜测文件类型和编码（JSON）
 4. `file_tools_diff` — 文件差异对比（unified diff）

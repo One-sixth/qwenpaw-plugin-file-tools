@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+import tempfile
 
 import pytest
 
@@ -23,6 +25,27 @@ def _make_files(dir_path, names):
             open(path, "w").close()
 
 
+def _can_symlink() -> bool:
+    """探测当前进程能否创建目录符号链接（需管理员权限或开发者模式）。"""
+    probe = tempfile.mkdtemp(prefix="ft_symprobe_")
+    try:
+        target = os.path.join(probe, "t")
+        os.makedirs(target)
+        os.symlink(target, os.path.join(probe, "l"), target_is_directory=True)
+        return True
+    except OSError:
+        return False
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+
+
+_HAS_SYMLINK = _can_symlink()
+requires_symlink = pytest.mark.skipif(
+    not _HAS_SYMLINK,
+    reason="无法创建符号链接（需管理员权限或开发者模式）",
+)
+
+
 class TestListdir:
     def test_basic(self, tmp_dir):
         open(os.path.join(tmp_dir, "a.txt"), "w").close()
@@ -41,17 +64,17 @@ class TestListdir:
 
     def test_recursive_2(self, subdir_structure):
         result = file_tools_listdir(subdir_structure, recursive=2)
-        assert "dir_a" + os.sep + "sub_file1.txt" in result.content[0].text
-        assert "dir_a" + os.sep + "sub_dir1" in result.content[0].text
-        assert "dir_b" + os.sep + "sub_file2.txt" in result.content[0].text
+        assert "dir_a/sub_file1.txt" in result.content[0].text
+        assert "dir_a/sub_dir1/" in result.content[0].text
+        assert "dir_b/sub_file2.txt" in result.content[0].text
         assert "file_a.txt" in result.content[0].text
         assert ".hidden" in result.content[0].text
 
     def test_recursive_minus1(self, subdir_structure):
         result = file_tools_listdir(subdir_structure, recursive=-1)
-        assert "dir_a" + os.sep + "sub_file1.txt" in result.content[0].text
-        assert "dir_a" + os.sep + "sub_dir1" in result.content[0].text
-        assert "dir_b" + os.sep + "sub_file2.txt" in result.content[0].text
+        assert "dir_a/sub_file1.txt" in result.content[0].text
+        assert "dir_a/sub_dir1/" in result.content[0].text
+        assert "dir_b/sub_file2.txt" in result.content[0].text
 
     def test_invalid_recursive(self, tmp_dir):
         result = file_tools_listdir(tmp_dir, recursive=0)
@@ -78,7 +101,7 @@ class TestListdir:
         open(os.path.join(tmp_dir, "b_file.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, recursive=1)
         lines = result.content[0].text.strip().split("\n")
-        a_idx = next(i for i, l in enumerate(lines) if l == "a_dir")
+        a_idx = next(i for i, l in enumerate(lines) if l == "a_dir/")
         b_idx = next(i for i, l in enumerate(lines) if l == "b_file.txt")
         z_idx = next(i for i, l in enumerate(lines) if l == "z_last.txt")
         assert a_idx < b_idx < z_idx
@@ -107,7 +130,7 @@ class TestListdir:
         open(os.path.join(tmp_dir, "abs_test.txt"), "w").close()
         # absolute=True 时返回绝对路径
         result_abs = file_tools_listdir(tmp_dir, recursive=1, absolute=True)
-        abs_path = os.path.join(tmp_dir, "abs_test.txt")
+        abs_path = os.path.join(tmp_dir, "abs_test.txt").replace("\\", "/")
         assert abs_path in result_abs.content[0].text
         # absolute=False（默认）时只返回文件名
         result_rel = file_tools_listdir(tmp_dir, recursive=1, absolute=False)
@@ -165,13 +188,13 @@ class TestListdir:
         result = file_tools_listdir(tmp_dir, sort_by="type", ascending=True)
         lines = result.content[0].text.strip().split("\n")
         # "directory" < "file"（字典序）
-        assert lines[0] == "zzz_dir"
+        assert lines[0] == "zzz_dir/"
         assert lines[1] == "aaa_file.txt"
         # descending
         result2 = file_tools_listdir(tmp_dir, sort_by="type", ascending=False)
         lines2 = result2.content[0].text.strip().split("\n")
         assert lines2[0] == "aaa_file.txt"
-        assert lines2[1] == "zzz_dir"
+        assert lines2[1] == "zzz_dir/"
 
     def test_sort_by_size(self, tmp_dir):
         open(os.path.join(tmp_dir, "small.txt"), "w").close()
@@ -236,6 +259,712 @@ class TestListdir:
         open(os.path.join(tmp_dir, "only.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, start=1, count=1)
         assert result.content[0].text.strip() == "only.txt"
+
+
+def _build_cycle_tree(root):
+    """构造环 + 合法复用测试树：
+
+    a/fa.txt, a/b/fb.txt, a/b/c/fc.txt, shared/sx.txt, top.txt
+    a/b/c/loop -> a          （环：指向祖先）
+    x/one      -> shared     （合法复用，非祖先）
+    y/two      -> shared     （合法复用）
+    """
+    os.makedirs(os.path.join(root, "a", "b", "c"))
+    os.makedirs(os.path.join(root, "shared"))
+    os.makedirs(os.path.join(root, "x"))
+    os.makedirs(os.path.join(root, "y"))
+    for p in ["top.txt", "a/fa.txt", "a/b/fb.txt", "a/b/c/fc.txt", "shared/sx.txt"]:
+        open(os.path.join(root, *p.split("/")), "w").close()
+    os.symlink(os.path.join(root, "a"),
+               os.path.join(root, "a", "b", "c", "loop"), target_is_directory=True)
+    os.symlink(os.path.join(root, "shared"),
+               os.path.join(root, "x", "one"), target_is_directory=True)
+    os.symlink(os.path.join(root, "shared"),
+               os.path.join(root, "y", "two"), target_is_directory=True)
+
+
+class TestListdirFilters:
+    """v1.3.0 过滤器参数、显示格式与 symlink 行为测试。"""
+
+    # ── 显示格式 ──
+
+    def test_display_forward_slash_and_trailing(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1).content[0].text.splitlines()
+        text = "\n".join(lines)
+        assert "\\" not in text          # 全正斜杠
+        assert "dir_a/" in lines         # 目录带尾斜杠独占一行
+        assert "dir_a/sub_dir1/" in lines
+        assert "dir_a/sub_file1.txt" in lines
+
+    def test_display_absolute_slash_dir(self, tmp_dir):
+        os.makedirs(os.path.join(tmp_dir, "d1"))
+        text = file_tools_listdir(tmp_dir, absolute=True).content[0].text
+        assert text.strip().endswith("d1/")
+        assert "\\" not in text
+
+    # ── types ──
+
+    def test_types_file_hides_dirs_keeps_traversal(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   types=["file"]).content[0].text.splitlines()
+        assert "dir_a/" not in lines
+        assert "dir_a/sub_file1.txt" in lines   # 目录不显示但仍遍历
+        assert "file_a.txt" in lines
+
+    def test_types_dir_alias(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=1,
+                                   types=["dir"]).content[0].text.splitlines()
+        assert "dir_a/" in lines and "dir_b/" in lines
+        assert "file_a.txt" not in lines
+
+    def test_types_case_insensitive_and_full_word(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=1,
+                                   types=["DIRECTORY", "File"]).content[0].text.splitlines()
+        assert "dir_a/" in lines and "file_a.txt" in lines
+        assert ".hidden" in lines          # 无后缀文件，type=file 照样命中
+        lines2 = file_tools_listdir(subdir_structure, recursive=1,
+                                    types=["directory"]).content[0].text.splitlines()
+        assert ".hidden" not in lines2     # 文件被目录过滤器排除
+
+    def test_types_all_and_empty_are_noop(self, tmp_dir):
+        open(os.path.join(tmp_dir, "a.txt"), "w").close()
+        os.makedirs(os.path.join(tmp_dir, "sub"))
+        base = file_tools_listdir(tmp_dir).content[0].text
+        assert file_tools_listdir(tmp_dir, types=["all"]).content[0].text == base
+        assert file_tools_listdir(tmp_dir, types=[]).content[0].text == base
+
+    def test_types_invalid_value_error(self, tmp_dir):
+        r = file_tools_listdir(tmp_dir, types=["folder"])
+        assert "失败" in r.content[0].text and "types" in r.content[0].text
+
+    # ── extensions ──
+
+    def test_extensions_basic_dirs_pass_through(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "b.py", "d/"])
+        open(os.path.join(tmp_dir, "d", "c.py"), "w").close()
+        lines = file_tools_listdir(tmp_dir, recursive=2,
+                                   extensions=["py"]).content[0].text.splitlines()
+        assert "b.py" in lines and "d/c.py" in lines
+        assert "d/" in lines                    # 目录直通
+        assert "a.txt" not in lines
+
+    def test_extensions_input_tolerance(self, tmp_dir):
+        _make_files(tmp_dir, ["x.PY", "y.txt"])
+        for token in (".py", "*.py", "py", "PY"):
+            lines = file_tools_listdir(tmp_dir,
+                                       extensions=[token]).content[0].text.splitlines()
+            assert "x.PY" in lines, token
+            assert "y.txt" not in lines, token
+
+    def test_extensions_empty_noop(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "b.py"])
+        base = file_tools_listdir(tmp_dir).content[0].text
+        assert file_tools_listdir(tmp_dir, extensions=[]).content[0].text == base
+
+    def test_extensions_dir_named_like_ext_passes(self, tmp_dir):
+        _make_files(tmp_dir, ["weird.py/", "only.md"])
+        lines = file_tools_listdir(tmp_dir, recursive=1,
+                                   extensions=["md"]).content[0].text.splitlines()
+        assert "weird.py/" in lines   # 目录直通：不看它的"后缀"
+        assert "only.md" in lines
+
+    def test_types_file_plus_extensions_yields_pure_files(self, tmp_dir):
+        _make_files(tmp_dir, ["a.py", "d/"])
+        lines = file_tools_listdir(tmp_dir, recursive=2, types=["file"],
+                                   extensions=["py"]).content[0].text.splitlines()
+        assert "d/" not in lines
+        assert "a.py" in lines
+
+    # ── contains ──
+
+    def test_contains_matches_full_path(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   contains=["sub_file"]).content[0].text.splitlines()
+        assert "dir_a/sub_file1.txt" in lines
+        assert "dir_b/sub_file2.txt" in lines
+        assert "file_a.txt" not in lines
+
+    def test_contains_case_insensitive(self, tmp_dir):
+        _make_files(tmp_dir, ["README.md"])
+        assert "README.md" in file_tools_listdir(tmp_dir,
+                                                 contains=["readme"]).content[0].text
+        assert "README.md" in file_tools_listdir(tmp_dir,
+                                                 contains=["ReAdMe"]).content[0].text
+
+    def test_contains_slash_scopes_to_directory(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   contains=["dir_a/"]).content[0].text.splitlines()
+        assert "dir_a/" in lines                      # 目录自身串以 dir_a/ 结尾
+        assert "dir_a/sub_file1.txt" in lines
+        assert "dir_a/sub_dir1/" in lines
+        assert "file_a.txt" not in lines
+        assert "dir_b/sub_file2.txt" not in lines
+
+    def test_contains_multi_or(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "b.md", "c.py"])
+        lines = file_tools_listdir(tmp_dir,
+                                   contains=["a.txt", ".md"]).content[0].text.splitlines()
+        assert "a.txt" in lines and "b.md" in lines
+        assert "c.py" not in lines
+
+    # ── regex ──
+
+    def test_regex_search_semantics_unanchored(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   regex="sub_file").content[0].text.splitlines()
+        assert "dir_a/sub_file1.txt" in lines   # 片段无锚即可命中
+
+    def test_regex_dollar_separates_file_and_dir(self, tmp_dir):
+        _make_files(tmp_dir, ["a.md", "sub.md/"])
+        lines = file_tools_listdir(tmp_dir, regex=r"\.md$").content[0].text.splitlines()
+        assert "a.md" in lines
+        assert "sub.md/" not in lines           # 尾斜杠使 $ 落空
+        lines2 = file_tools_listdir(tmp_dir, regex=r"/$").content[0].text.splitlines()
+        assert "sub.md/" in lines2
+        assert "a.md" not in lines2
+
+    def test_regex_case_sensitive_with_i_flag_escape(self, tmp_dir):
+        _make_files(tmp_dir, ["ABC.txt"])
+        assert "无匹配" in file_tools_listdir(tmp_dir, regex="abc").content[0].text
+        assert "ABC.txt" in file_tools_listdir(tmp_dir, regex="(?i)abc").content[0].text
+
+    def test_regex_invalid_error(self, tmp_dir):
+        r = file_tools_listdir(tmp_dir, regex="((")
+        assert "失败" in r.content[0].text and "regex" in r.content[0].text
+
+    # ── exclude ──
+
+    def test_exclude_dir_prunes_whole_tree(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  exclude=["dir_a"]).content[0].text
+        assert "dir_a" not in text              # 目录及其内容全部消失
+        assert "dir_b/sub_file2.txt" in text
+
+    def test_exclude_file_glob(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "b.log"])
+        lines = file_tools_listdir(tmp_dir, exclude=["*.log"]).content[0].text.splitlines()
+        assert "a.txt" in lines and "b.log" not in lines
+
+    def test_exclude_path_pattern_keeps_dir_removes_children(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   exclude=["dir_a/*"]).content[0].text.splitlines()
+        assert "dir_a/" in lines                # 模式带斜杠，目录自身不命中
+        assert "dir_a/sub_file1.txt" not in lines
+        assert "dir_a/sub_dir1/" not in lines
+
+    def test_exclude_backslash_pattern_normalized(self, subdir_structure):
+        lines = file_tools_listdir(subdir_structure, recursive=-1,
+                                   exclude=["dir_a\\sub*"]).content[0].text.splitlines()
+        assert "dir_a/" in lines
+        assert "dir_a/sub_file1.txt" not in lines
+
+    def test_exclude_in_absolute_mode_by_basename(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1, absolute=True,
+                                  exclude=["dir_a"]).content[0].text
+        assert "dir_a" not in text
+        assert "file_a.txt" in text
+
+    def test_exclude_empty_noop(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        base = file_tools_listdir(tmp_dir).content[0].text
+        assert file_tools_listdir(tmp_dir, exclude=[]).content[0].text == base
+
+    # ── 组合 / 字符串宽容 / 统计 ──
+
+    def test_and_across_params(self, tmp_dir):
+        _make_files(tmp_dir, ["app.py", "app_test.py", "lib.js"])
+        lines = file_tools_listdir(tmp_dir, extensions=["py"],
+                                   contains=["test"]).content[0].text.splitlines()
+        assert lines[0] == "app_test.py"
+
+    def test_all_filter_params_accept_plain_string(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1, types="file",
+                                  extensions="txt", contains="sub_file",
+                                  exclude="dir_b").content[0].text
+        assert "dir_a/sub_file1.txt" in text
+        assert "dir_b/sub_file2.txt" not in text
+
+    def test_filter_footer_stats(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  contains=["sub_file"]).content[0].text
+        assert "过滤统计：共扫描 7 条，匹配 2 条。" in text
+        base = file_tools_listdir(subdir_structure, recursive=-1).content[0].text
+        assert "过滤统计" not in base          # 无过滤时不加统计行
+
+    def test_no_match_message_with_filter(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        text = file_tools_listdir(tmp_dir,
+                                  contains=["zzz_absent"]).content[0].text
+        assert text.startswith("（无匹配条目")
+
+    def test_pagination_over_filtered_set(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(10)]
+                    + [f"m{i}.md" for i in range(3)])
+        text = file_tools_listdir(tmp_dir, extensions=["md"],
+                                  count=2).content[0].text
+        assert "m0.md" in text and "m1.md" in text and "m2.md" not in text
+        assert "后面还有 1 个文件" in text
+        text2 = file_tools_listdir(tmp_dir, extensions=["md"],
+                                   start=5).content[0].text
+        assert "没有更多文件，共 3 个文件" in text2
+
+    # ── follow_symlink / 环检测 ──
+
+    @requires_symlink
+    def test_symlink_dir_followed_by_default(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        lines = file_tools_listdir(tmp_dir, recursive=-1).content[0].text.splitlines()
+        assert "x/one/" in lines                    # 链接目录按 directory 展开
+        assert "x/one/sx.txt" in lines
+
+    @requires_symlink
+    def test_symlink_dir_not_followed_leaf(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        lines = file_tools_listdir(tmp_dir, recursive=-1,
+                                   follow_symlink=False).content[0].text.splitlines()
+        assert "x/one" in lines                     # symlink 叶子，无尾斜杠
+        assert "x/one/" not in lines
+        assert "x/one/sx.txt" not in lines          # 不进入
+
+    @requires_symlink
+    def test_symlink_file_labelled_symlink(self, tmp_dir):
+        _make_files(tmp_dir, ["t.txt"])
+        os.symlink(os.path.join(tmp_dir, "t.txt"), os.path.join(tmp_dir, "tlk"))
+        lines = file_tools_listdir(tmp_dir, types=["symlink"]).content[0].text.splitlines()
+        assert "tlk" in lines
+        assert "t.txt" not in lines
+
+    @requires_symlink
+    def test_cycle_warning_row_inline(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        text = file_tools_listdir(tmp_dir, recursive=-1).content[0].text
+        assert text.count("<<<警告") == 1
+        assert "a/b/c/loop/ <<<警告，发现symlink环嵌套，跳过该文件夹展开>>>" in text
+        assert "a/b/c/loop/fa.txt" not in text      # 环未展开
+
+    @requires_symlink
+    def test_cycle_warning_hidden_when_filtered(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        # 警告行是普通目录条目：types=file 时被隐藏，无尾部汇报
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  types=["file"]).content[0].text
+        assert "<<<警告" not in text
+        assert "a/fa.txt" in text
+        # contains 不命中环路径 → 警告同样消失（后缀不参与匹配，用纯路径判定）
+        text2 = file_tools_listdir(tmp_dir, recursive=-1,
+                                   contains=["fa.txt"]).content[0].text
+        assert "<<<警告" not in text2
+        assert "a/b/c/loop" not in text2
+
+    @requires_symlink
+    def test_legit_reuse_not_pruned(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        lines = file_tools_listdir(tmp_dir, recursive=-1).content[0].text.splitlines()
+        assert "x/one/sx.txt" in lines
+        assert "y/two/sx.txt" in lines              # 两条复用链都完整展开
+        assert "shared/sx.txt" in lines
+
+    @requires_symlink
+    def test_follow_false_no_cycle_possible(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  follow_symlink=False).content[0].text
+        assert "<<<警告" not in text                # 不进入链接 → 不可能成环
+        assert "a/b/c/loop" in text                 # 以 symlink 叶子身份列出
+
+
+class TestListdirCapsAndFixes:
+    """独立审查发现项的回归测试（双上限路径用 monkeypatch 压低模块级上限）。"""
+
+    @staticmethod
+    def _patch_caps(monkeypatch, match=None, visit=None):
+        import tools.info as info_mod
+        if match is not None:
+            monkeypatch.setattr(info_mod, "_LISTDIR_MAX_MATCH", match)
+        if visit is not None:
+            monkeypatch.setattr(info_mod, "_LISTDIR_MAX_VISIT", visit)
+
+    # ── Bug1 回归：早退路径不得吞掉截断提示/统计 ──
+
+    def test_visit_cap_hint_on_zero_match(self, tmp_dir, monkeypatch):
+        self._patch_caps(monkeypatch, visit=10)
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(25)])
+        text = file_tools_listdir(tmp_dir, contains=["nothing_here"]).content[0].text
+        assert text.startswith("（无匹配条目")
+        assert "提前停止扫描" in text and "exclude" in text
+
+    def test_visit_cap_hint_with_matches(self, tmp_dir, monkeypatch):
+        self._patch_caps(monkeypatch, visit=10)
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(25)])
+        # ".txt" 全命中 → 必然走"有匹配但检查数触顶"路径（顺序无关，确定性强）
+        text = file_tools_listdir(tmp_dir, contains=[".txt"]).content[0].text
+        assert "过滤统计" in text and "提前停止扫描" in text
+
+    def test_match_cap_message_and_stats(self, tmp_dir, monkeypatch):
+        self._patch_caps(monkeypatch, match=5)
+        _make_files(tmp_dir, [f"f{i:02d}.txt" for i in range(10)])
+        text = file_tools_listdir(tmp_dir, extensions=["txt"]).content[0].text
+        assert "搜索文件超过5条" in text
+        assert "过滤统计" in text
+
+    def test_start_out_of_range_with_filter_has_stats(self, tmp_dir):
+        _make_files(tmp_dir, ["m0.md", "m1.md", "m2.md", "z.txt"])
+        text = file_tools_listdir(tmp_dir, extensions=["md"],
+                                  start=10).content[0].text
+        assert "没有更多文件，共 3 个文件" in text
+        assert "过滤统计" in text
+
+    def test_start_out_of_range_no_filter_verbatim(self, tmp_dir):
+        """无过滤器时早退消息必须与 v1.2.4 逐字一致（不追加任何新行）。"""
+        _make_files(tmp_dir, ["a.txt", "b.txt"])
+        text = file_tools_listdir(tmp_dir, start=10).content[0].text
+        assert text == "（没有更多文件，共 2 个文件，当前从第 10 个开始）"
+
+    # ── Bug2 回归：all 与非法值混合不受顺序影响 ──
+
+    def test_types_all_with_bogus_still_errors(self, tmp_dir):
+        for combo in (["all", "bogus"], ["bogus", "all"], ["file", "all", "x"]):
+            r = file_tools_listdir(tmp_dir, types=combo)
+            assert "失败" in r.content[0].text, combo
+            assert "types" in r.content[0].text, combo
+
+    # ── Bug4 回归：空 token 后缀 = 不过滤 ──
+
+    def test_extensions_invalid_dot_tokens_noop(self, tmp_dir):
+        _make_files(tmp_dir, ["README", "a.py"])
+        base = file_tools_listdir(tmp_dir).content[0].text
+        for token in (".", "*.", "*."):
+            r = file_tools_listdir(tmp_dir, extensions=[token]).content[0].text
+            assert r == base, token
+
+    # ── Bug5：link 别名承诺化 ──
+
+    def test_types_link_alias_valid(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        r = file_tools_listdir(tmp_dir, types=["link"]).content[0].text
+        assert "不合法" not in r
+        assert "无匹配条目" in r          # 普通目录无 symlink，走过滤而非报错
+
+    # ── 绝对模式下路径形态 exclude ──
+
+    def test_exclude_path_pattern_absolute_mode(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1, absolute=True,
+                                  exclude=["*/dir_a/*"]).content[0].text
+        assert "dir_a/" in text                       # 目录本身保留
+        assert "sub_file1.txt" not in text            # 子项按绝对路径命中剪除
+
+    # ── 尾斜杠排序顺序固化 ──
+
+    def test_sort_trailing_slash_order(self, tmp_dir):
+        _make_files(tmp_dir, ["a_dir.txt", "a_dir/"])
+        lines = file_tools_listdir(tmp_dir).content[0].text.splitlines()
+        # '.'(0x2E) < '/'(0x2F)：同前缀文件排在目录前
+        assert lines == ["a_dir.txt", "a_dir/"]
+
+    # ── Bug3 裁决：断链符号链接可见（type=symlink、元数据空） ──
+
+    @requires_symlink
+    def test_broken_symlink_is_listed(self, tmp_dir):
+        _make_files(tmp_dir, ["ok.txt"])
+        os.symlink(os.path.join(tmp_dir, "no_such_target_xyz"),
+                   os.path.join(tmp_dir, "dangling"))
+        os.symlink(os.path.join(tmp_dir, "ok.txt"),
+                   os.path.join(tmp_dir, "good"))
+        text = file_tools_listdir(tmp_dir).content[0].text
+        assert "dangling <<<警告，符号链接目标不可达>>>" in text
+        assert "good <<<" not in text               # 健康链接无警告
+        assert "ok.txt" in text
+        # follow=False 同样判断（可达性与遍历策略无关）
+        text2 = file_tools_listdir(tmp_dir, follow_symlink=False).content[0].text
+        assert "dangling <<<警告，符号链接目标不可达>>>" in text2
+        # columns 下不崩溃：size 为 0、type 照常 symlink
+        text3 = file_tools_listdir(tmp_dir, columns=["size", "type"]).content[0].text
+        assert "| 0 | symlink |" in text3
+
+    @requires_symlink
+    def test_broken_suffix_not_in_matching(self, tmp_dir):
+        _make_files(tmp_dir, ["ok.txt"])
+        os.symlink(os.path.join(tmp_dir, "gone_xyz"),
+                   os.path.join(tmp_dir, "dangling"))
+        # contains 搜警告文字 → 不命中（匹配只看纯路径）
+        assert "无匹配条目" in file_tools_listdir(
+            tmp_dir, contains=["不可达"]).content[0].text
+        # regex `dangling$` 纯路径锚定照常命中（警告后缀不挡 $）
+        lines = file_tools_listdir(tmp_dir,
+                                   regex=r"dangling$").content[0].text.splitlines()
+        assert any(l.startswith("dangling <<<") for l in lines)
+        # exclude 按纯路径排除断链
+        text = file_tools_listdir(tmp_dir,
+                                  exclude=["dangling"]).content[0].text
+        assert "dangling" not in text
+
+    # ── 环警告与 Markdown 表格共存 ──
+
+    @requires_symlink
+    def test_cycle_warning_in_markdown_table(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  columns=["type"]).content[0].text
+        warn_lines = [l for l in text.splitlines() if "警告" in l]
+        assert len(warn_lines) == 1
+        assert warn_lines[0].startswith("| a/b/c/loop/ <<<警告")
+        assert "| directory |" in warn_lines[0]      # 仅 name 列带警告
+
+    @requires_symlink
+    def test_no_cycle_warning_when_depth_insufficient(self, tmp_dir):
+        _build_cycle_tree(tmp_dir)
+        # loop 位于深度 4；recursive=2 遍历到不了 → 无环判定机会，也不应告警
+        text = file_tools_listdir(tmp_dir, recursive=2).content[0].text
+        assert "警告" not in text
+        assert "a/b/" in text
+        assert "a/b/c/" not in text
+
+
+class TestListdirEdgeCorners:
+    """行覆盖审计后的补网测试：防御分支、上限×分页组合、语义固化。"""
+
+    @staticmethod
+    def _cap(monkeypatch, match=None, visit=None):
+        import tools.info as info_mod
+        if match is not None:
+            monkeypatch.setattr(info_mod, "_LISTDIR_MAX_MATCH", match)
+        if visit is not None:
+            monkeypatch.setattr(info_mod, "_LISTDIR_MAX_VISIT", visit)
+
+    # ── parse_int 字符串非法路径（recursive/start，count 旧已有）──
+
+    def test_recursive_illegal_string(self, tmp_dir):
+        r = file_tools_listdir(tmp_dir, recursive="abc")
+        assert "失败" in r.content[0].text
+
+    def test_start_illegal_string(self, tmp_dir):
+        r = file_tools_listdir(tmp_dir, start="1.5")
+        assert "失败" in r.content[0].text
+
+    # ── created_at 列首次实弹 ──
+
+    def test_created_at_column(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        text = file_tools_listdir(tmp_dir, columns=["created_at", "type"]).content[0].text
+        assert "| created_at |" in text
+        assert "a.txt" in text and "20" in text      # 年份数字存在
+        # sort_by=created_at 的隐式收集也走同一路径
+        text2 = file_tools_listdir(tmp_dir, sort_by="created_at",
+                                   ascending=False).content[0].text
+        assert "a.txt" in text2
+
+    # ── 防御性 OSError 分支 ──
+
+    def test_entry_type_probe_failure_falls_back_to_file(self, tmp_dir, monkeypatch):
+        class _ErrEntry:
+            def __init__(self, base):
+                self.name = "boom"
+                self.path = os.path.join(base, "boom")
+
+            def is_symlink(self):
+                raise OSError("probe fail")
+
+            def is_dir(self, follow_symlinks=True):
+                raise OSError("probe fail")
+
+            def stat(self):
+                raise OSError("probe fail")
+
+        import os as os_mod
+
+        real_scandir = os_mod.scandir
+
+        def fake_scandir(p):
+            if os.path.abspath(p) == os.path.abspath(tmp_dir):
+                return iter([_ErrEntry(tmp_dir)])
+            return real_scandir(p)
+
+        monkeypatch.setattr(os_mod, "scandir", fake_scandir)
+        try:
+            text = file_tools_listdir(tmp_dir).content[0].text
+        finally:
+            # 立即还原：tmp_dir fixture 的 rmtree 会在 teardown 期调用 os.scandir
+            monkeypatch.undo()
+        assert "boom" in text                        # 探测失败按 file 处理不丢弃
+
+    def test_scandir_oserror_skips_dir(self, tmp_dir, monkeypatch):
+        import os as os_mod
+
+        def boom(p):
+            raise PermissionError("denied")
+
+        monkeypatch.setattr(os_mod, "scandir", boom)
+        try:
+            text = file_tools_listdir(tmp_dir).content[0].text
+        finally:
+            monkeypatch.undo()          # 别让 rmtree 清理也吃 PermissionError
+        assert text == "（空目录，无文件）"            # 静默跳过，不崩溃
+
+    def test_realpath_failure_no_crash(self, tmp_dir, monkeypatch):
+        """根/子目录 realpath 全炸：靠双守卫降级为"不防环"，功能不中断。"""
+        _make_files(tmp_dir, ["a.txt", "sub/"])
+        import os as os_mod
+
+        def boom(p):
+            raise OSError("rp down")
+
+        monkeypatch.setattr(os_mod.path, "realpath", boom)
+        try:
+            text = file_tools_listdir(tmp_dir, recursive=2).content[0].text
+        finally:
+            monkeypatch.undo()
+        assert "a.txt" in text and "sub/" in text
+
+    # ── 上限 × 递归 / 上限 × 越界分页 ──
+
+    def test_match_cap_inside_recursion(self, tmp_dir, monkeypatch):
+        self._cap(monkeypatch, match=2)
+        _make_files(tmp_dir, ["sub/", "sub/f1.txt", "sub/f2.txt", "sub/f3.txt"])
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  extensions=["txt"]).content[0].text
+        assert "搜索文件超过2条" in text
+
+    def test_match_cap_with_start_out_of_range(self, tmp_dir, monkeypatch):
+        self._cap(monkeypatch, match=3)
+        _make_files(tmp_dir, [f"t{i}.txt" for i in range(10)])
+        text = file_tools_listdir(tmp_dir, extensions=["txt"],
+                                  start=100).content[0].text
+        assert "没有更多文件，共 3 个文件" in text
+        assert "过滤统计" in text and "搜索文件超过3条" in text
+
+    def test_visit_cap_with_start_out_of_range(self, tmp_dir, monkeypatch):
+        self._cap(monkeypatch, visit=8)
+        _make_files(tmp_dir, [f"t{i}.txt" for i in range(20)])
+        text = file_tools_listdir(tmp_dir, contains=[".txt"],
+                                  start=100).content[0].text
+        assert "没有更多文件" in text and "过滤统计" in text
+        assert "提前停止扫描" in text
+
+    # ── 参数语义固化（LLM 易踩的角落）──
+
+    def test_contains_is_literal_not_glob(self, tmp_dir):
+        _make_files(tmp_dir, ["ab.txt"])
+        assert "无匹配条目" in file_tools_listdir(
+            tmp_dir, contains=["a*"]).content[0].text      # "*" 是字面量非通配
+
+    def test_extension_semantics_dotfile_and_multidot(self, tmp_dir):
+        _make_files(tmp_dir, [".hidden", "plain", "a.tar.gz", "x.tar"])
+        lines = file_tools_listdir(tmp_dir, extensions=["gz"]).content[0].text.splitlines()
+        assert "a.tar.gz" in lines                 # 多后缀取最后一段
+        assert "x.tar" not in lines
+        assert ".hidden" not in lines              # dotfile 无后缀
+        hidden_view = file_tools_listdir(tmp_dir,
+                                         extensions=["hidden"]).content[0].text
+        assert "无匹配条目" in hidden_view            # "hidden" 不是它的后缀
+        plain_view = file_tools_listdir(tmp_dir,
+                                        extensions=["plain"]).content[0].text
+        assert "无匹配条目" in plain_view             # 无点裸名不算后缀
+
+    def test_empty_or_whitespace_filters_are_noop(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        base = file_tools_listdir(tmp_dir).content[0].text
+        for kw in ({"regex": ""}, {"regex": "  "}, {"contains": ""},
+                   {"contains": ["", "  "]}, {"extensions": " "},
+                   {"exclude": ""}, {"types": "  "}):
+            got = file_tools_listdir(tmp_dir, **kw).content[0].text
+            assert got == base, kw                 # 全空输入 = 不过滤且无统计行
+
+    def test_regex_mid_global_flag_reports_error(self, tmp_dir):
+        r = file_tools_listdir(tmp_dir, regex="a(?i)b")  # 全局标志必须在开头
+        assert "失败" in r.content[0].text and "regex" in r.content[0].text
+
+    def test_regex_local_case_group_works(self, tmp_dir):
+        _make_files(tmp_dir, ["ABC.txt"])
+        text = file_tools_listdir(tmp_dir, regex=r"(?i:abc)\.txt").content[0].text
+        assert "ABC.txt" in text                   # 局部不区分大小写组可用
+
+    def test_regex_lookahead_expresses_contains_and(self, tmp_dir):
+        _make_files(tmp_dir, ["a_b.txt", "solo.txt"])
+        text = file_tools_listdir(tmp_dir, regex=r"^(?=.*a)(?=.*b)[^/]+$").content[0].text
+        assert "a_b.txt" in text and "solo.txt" not in text   # AND 需求交给前瞻
+
+    def test_regex_exact_directory_anchor(self, subdir_structure):
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  regex=r"^dir_a/$").content[0].text
+        assert "dir_a/" in text                    # 精确锚定只命中目录自身
+        assert "sub_file1" not in text
+
+    def test_exclude_star_excludes_everything(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "d/"])
+        text = file_tools_listdir(tmp_dir, recursive=2,
+                                  exclude=["*"]).content[0].text
+        assert text.startswith("（无匹配条目")
+
+    def test_exclude_question_mark_glob(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt", "ab.txt"])
+        lines = file_tools_listdir(tmp_dir, exclude=["a?.txt"]).content[0].text.splitlines()
+        assert "a.txt" in lines and "ab.txt" not in lines
+
+    def test_exclude_trailing_slash_pattern_is_noop(self, subdir_structure):
+        """exclude 匹配基准无尾斜杠——"dir_a/" 模式两边都够不着（区别于 contains）。"""
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  exclude=["dir_a/"]).content[0].text
+        assert "dir_a/" in text and "dir_a/sub_file1.txt" in text
+
+    def test_footer_order_pagination_before_stats(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(10)])
+        text = file_tools_listdir(tmp_dir, contains=[".txt"], count=3).content[0].text
+        assert text.index("当前列出的文件") < text.index("过滤统计")
+
+    def test_unicode_chinese_names_match(self, tmp_dir):
+        _make_files(tmp_dir, ["中文测试.txt", "other.txt"])
+        t1 = file_tools_listdir(tmp_dir, contains=["中文"]).content[0].text
+        assert "中文测试.txt" in t1 and "other.txt" not in t1
+        t2 = file_tools_listdir(tmp_dir, regex="中文").content[0].text
+        assert "中文测试.txt" in t2
+
+    # ── symlink 边角 ──
+
+    @requires_symlink
+    def test_symlink_ext_by_link_name_size_follows_target(self, tmp_dir):
+        with open(os.path.join(tmp_dir, "big.bin"), "w") as f:
+            f.write("x" * 100)
+        os.symlink(os.path.join(tmp_dir, "big.bin"),
+                   os.path.join(tmp_dir, "lnk.py"))
+        text = file_tools_listdir(tmp_dir, extensions=["py"]).content[0].text
+        assert "lnk.py" in text and "big.bin" not in text   # 后缀按链接名
+        text2 = file_tools_listdir(tmp_dir, columns=["size", "type"]).content[0].text
+        assert "| 100 | symlink |" in text2                 # 元数据随目标
+
+    @requires_symlink
+    def test_self_loop_pointing_to_scan_root(self, tmp_dir):
+        os.symlink(tmp_dir, os.path.join(tmp_dir, "me"), target_is_directory=True)
+        _make_files(tmp_dir, ["in.txt"])
+        text = file_tools_listdir(tmp_dir, recursive=-1).content[0].text
+        assert "me/ <<<警告，发现symlink环嵌套" in text       # 指向遍历根本身也算环
+        assert text.count("<<<警告") == 1
+        assert "me/me" not in text and "me/in.txt" not in text
+
+    # ── 分支覆盖补网（coverage.py 揪出）──
+
+    def test_non_sequence_filter_values_are_noop(self, tmp_dir):
+        """_listdir_as_str_list 的"既非 str 也非 list/tuple"兜底分支。"""
+        _make_files(tmp_dir, ["a.txt"])
+        base = file_tools_listdir(tmp_dir).content[0].text
+        for kw in ({"extensions": 123}, {"contains": {"k": "v"}},
+                   {"exclude": 3.5}, {"extensions": ["*"]}):
+            got = file_tools_listdir(tmp_dir, **kw).content[0].text
+            assert got == base, kw     # 不可识别输入与裸 "*" 均 = 不过滤
+
+    def test_all_columns_markdown(self, tmp_dir):
+        """六列全开：走满 gather_set 多列循环（含 extension 之后的回路）。"""
+        _make_files(tmp_dir, ["a.txt"])
+        text = file_tools_listdir(
+            tmp_dir, columns=["size", "permissions", "type",
+                              "modified_at", "created_at", "extension"]
+        ).content[0].text
+        lines = text.strip().splitlines()
+        assert lines[0] == ("| name | size | permissions | type | "
+                            "modified_at | created_at | extension |")
+        row = lines[2]
+        assert row.startswith("| a.txt | 0 |")
+        assert "| file |" in row
+        assert row.endswith("| .txt |")   # extension 列保留前导点（旧口径）
 
 
 class TestInfo:

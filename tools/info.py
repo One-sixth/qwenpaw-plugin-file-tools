@@ -1,7 +1,7 @@
 """信息读取类工具。
 
 包含：
-- file_tools_listdir: 列出目录内容（纯文本/Markdown）
+- file_tools_listdir: 列出目录内容（过滤器/递归/属性列/Markdown）
 - file_tools_info: 查看文件元数据（JSON）
 - file_tools_guess: 猜测文件类型（JSON）
 - file_tools_diff: 文件差异对比（unified diff）
@@ -10,10 +10,12 @@
 
 import csv
 import difflib
+import fnmatch
 import io
 import json
 import logging
 import os
+import re
 import stat
 import time
 from datetime import datetime
@@ -56,6 +58,49 @@ logger = logging.getLogger(__name__)
 # ── 1. file_tools_listdir ─────────────────────────────────
 
 
+_LISTDIR_TYPE_ALIAS = {
+    "file": "file",
+    "dir": "directory",
+    "directory": "directory",
+    "symlink": "symlink",
+    "link": "symlink",
+    "all": "all",
+}
+
+_CYCLE_WARN_SUFFIX = " <<<警告，发现symlink环嵌套，跳过该文件夹展开>>>"
+_BROKEN_SYMLINK_SUFFIX = " <<<警告，符号链接目标不可达>>>"
+
+_LISTDIR_MAX_MATCH = 10000
+_LISTDIR_MAX_VISIT = 100000
+
+
+def _listdir_as_str_list(value: Any) -> Optional[List[str]]:
+    """过滤参数输入归一为非空字符串列表。
+
+    str 视为单值列表；None/空列表/仅空串项均返回 None（即「不过滤」）。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return None
+    items = [str(v) for v in value if str(v).strip() != ""]
+    return items or None
+
+
+def _listdir_norm_ext(token: str) -> str:
+    """后缀 token 归一为不带点的小写形态："py"/".py"/"*.py" → "py"。"""
+    t = token.strip().lower()
+    if t.startswith("*."):
+        return t[2:]
+    if t.startswith("*"):
+        return t[1:]
+    if t.startswith("."):
+        return t[1:]
+    return t
+
+
 def file_tools_listdir(
     path: str,
     recursive: Union[int, str] = 1,
@@ -65,18 +110,30 @@ def file_tools_listdir(
     count: Union[int, str] = 500,
     sort_by: str = "name",
     ascending: bool = True,
+    types: Optional[Union[str, List[str]]] = None,
+    extensions: Optional[Union[str, List[str]]] = None,
+    contains: Optional[Union[str, List[str]]] = None,
+    regex: Optional[str] = None,
+    exclude: Optional[Union[str, List[str]]] = None,
+    follow_symlink: bool = True,
 ) -> str:
-    """列出目录内容。支持递归遍历、自定义属性列、排序和分页。无 columns 时返回纯文本列表（一行一文件），有 columns 时返回 Markdown 表格。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。
+    """列出目录内容。支持递归遍历、类型/后缀/子串/正则/排除五类过滤器、符号链接跟随控制、自定义属性列、排序和分页。过滤器之间 AND、列表内 OR；路径输出统一正斜杠分隔，目录条目带尾斜杠。匹配超过 10000 条或检查超过 100000 条时截断。无 columns 时返回纯文本列表（一行一文件），有 columns 时返回 Markdown 表格。
 
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。如果发现文件超过 10000条，将只能看到前10000条文件，更多文件条目需要用其他方法获取。支持整数或十进制数字字符串。
+        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。匹配超过 10000 条或检查超过 100000 条时提前停止，更多条目需缩小范围或用其他方法获取。支持整数或十进制数字字符串。
         columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
-        absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。
+        absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。两种模式路径均统一为正斜杠「/」分隔，目录条目带尾斜杠。
         start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。支持整数或十进制数字字符串。
         count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。
         sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。
         ascending: 排序方向。True=升序排列（默认），False=降序排列。
+        types: 条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；含 all 即不过滤（但其余非法值仍会报错，先校验后生效）。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。
+        extensions: 后缀名过滤器，如 ["py", "md"]。容忍 "py"/".py"/"*.py" 写法，大小写不敏感，列表内 OR，只匹配条目自身名的后缀；"."/"*." 这类归一后为空的无效 token 会被忽略（全部无效时=不过滤）。目录条目一律直通（不受本过滤器影响；想隐藏目录用 types=["file"]）。空列表 = 不过滤。
+        contains: 子串过滤器。对完整显示路径（正斜杠、含目录尾斜杠）做大小写不敏感的子串匹配——所见即所搜，路径任意一段命中即可，列表内 OR；匹配基准是输出串，请写正斜杠（传反斜杠不归一、不会命中）。想只命中某目录下的内容可用 ["utils/"] 形态。空列表 = 不过滤。
+        regex: 正则过滤器。底层实现为 re.search（子串匹配语义：模式可命中路径任意位置，无需写 .* 包裹），匹配对象为完整显示路径（正斜杠、目录带尾斜杠）。大小写敏感，可用前缀 (?i) 忽略大小写。示例：^src/ 限定 src 目录下、\\.md$ 只命中文件（目录带尾斜杠被 $ 天然排除）、/$ 只命中目录。非法正则报错。
+        exclude: 排除过滤器，glob 模式列表，如 [".git", "__pycache__", "*/tests/*", "*.tmp"]。对 {条目名, 显示路径(去尾斜杠)} 两个串做大小写不敏感的 fnmatch 整串匹配，任一命中即排除；模式中的反斜杠自动视为正斜杠。命中目录时整树剪枝（不进入、不列出），命中文件时跳过。空列表 = 不过滤。
+        follow_symlink: 是否跟随符号链接目录。True（默认）=进入符号链接目录，类型按目标判定（链接目录记 directory、链接文件记 symlink）；并启用 realpath 祖先链环检测：链接指向本次遍历路径上的祖先目录时不展开该条目，其显示行尾追加「<<<警告，发现symlink环嵌套，跳过该文件夹展开>>>」标记（警告标记不参与过滤匹配，警告行本身作为普通目录条目受各过滤器管辖）。False=符号链接一律记为 symlink 类型、不进入符号链接目录。断链（目标不存在/不可访问的符号链接）在任何模式下都会以 symlink 类型列出并在行尾追加「<<<警告，符号链接目标不可达>>>」，与环警告同规则——仅在输出阶段拼接、不参与匹配与排序，元数据列取不到时为空/0。
     """
     # ── 参数校验 ──
     recursive, err = parse_int(recursive, "recursive")
@@ -120,6 +177,52 @@ def file_tools_listdir(
             f"合法值为：{', '.join(sorted(valid_sort))}。"
         )
 
+    # ── 过滤器参数规范化 ──
+    type_set: Optional[set] = None
+    types_list = _listdir_as_str_list(types)
+    if types_list:
+        norm_types = []
+        for t in types_list:
+            key = t.strip().lower()
+            alias = _LISTDIR_TYPE_ALIAS.get(key)
+            if alias is None:
+                return make_error(
+                    "列出目录",
+                    f"types 参数值「{t}」不合法。合法值为：file、dir（directory）、symlink（link）、all。",
+                )
+            norm_types.append(alias)
+        # 先全量校验、再判 all：避免 ["all","bogus"] 因顺序跳过校验
+        if "all" not in norm_types:
+            type_set = set(norm_types)
+
+    regex_pat = None
+    if isinstance(regex, str) and regex.strip():
+        try:
+            regex_pat = re.compile(regex)
+        except re.error as exc:
+            return make_error(
+                "列出目录", f"regex 参数不是合法的正则表达式：{exc}"
+            )
+
+    ext_list = _listdir_as_str_list(extensions)
+    ext_set = None
+    if ext_list:
+        # 归一后丢弃空 token（"."/"*." 这类无效项），避免误命中"无后缀文件"
+        ext_set = {e for e in (_listdir_norm_ext(t) for t in ext_list) if e} or None
+    contains_list = _listdir_as_str_list(contains)
+    contains_terms = [t.lower() for t in contains_list] if contains_list else None
+    exclude_list = _listdir_as_str_list(exclude)
+    exclude_pats = (
+        [t.strip().lower().replace("\\", "/") for t in exclude_list]
+        if exclude_list
+        else None
+    )
+
+    filter_active = any(
+        x is not None
+        for x in (type_set, ext_set, contains_terms, regex_pat, exclude_pats)
+    )
+
     # ── 确定需要收集的列 ──
     columns = columns or []
     valid_columns = {"size", "permissions", "type", "modified_at", "created_at", "extension"}
@@ -132,74 +235,164 @@ def file_tools_listdir(
 
     # ── 扫描 ──
     rows: List[Dict[str, Any]] = []
-    file_count = 0
-    max_files = 10000
+    visited = 0
+    matched = 0
+    max_match = _LISTDIR_MAX_MATCH
+    max_visit = _LISTDIR_MAX_VISIT
+    stop_flags = {"match_cap": False, "visit_cap": False}
+    max_depth = {1: 1, 2: 2, -1: 10 ** 9}[recursive]
 
-    def _scan(dir_path: str, current_depth: int, max_depth: int):
-        nonlocal file_count
+    def _entry_type(entry: os.DirEntry) -> str:
         try:
-            items = os.listdir(dir_path)
-        except PermissionError:
-            return
+            is_link = entry.is_symlink()
+        except OSError:
+            is_link = False
+        if is_link and not follow_symlink:
+            return "symlink"
+        try:
+            is_dir = entry.is_dir(follow_symlinks=True)
+        except OSError:
+            is_dir = False
+        if is_dir:
+            return "directory"
+        return "symlink" if is_link else "file"
 
-        for item in items:
-            if file_count >= max_files:
+    def _scan(dir_path: str, depth: int, ancestors: set) -> None:
+        nonlocal visited, matched
+        try:
+            entries = list(os.scandir(dir_path))
+        except OSError:
+            return
+        for entry in entries:
+            visited += 1
+            if visited > max_visit:
+                stop_flags["visit_cap"] = True
                 return
 
-            full_path = os.path.join(dir_path, item)
+            etype = _entry_type(entry)
 
+            # 环检测：仅对「准备进入」的目录计算 realpath（普通目录链无环风险，开销可忽略）
+            descend = etype == "directory" and depth < max_depth
+            rp = None
+            is_cycle = False
+            if descend:
+                try:
+                    rp = os.path.realpath(entry.path)
+                except OSError:
+                    rp = None
+                if rp is not None and rp in ancestors:
+                    is_cycle = True
+                    descend = False
+
+            # 显示串：统一正斜杠；disp 不带尾斜杠（exclude 匹配用），disp_full 带（列表/匹配用）
             if absolute:
-                name = full_path
+                disp = entry.path
             else:
-                name = os.path.relpath(full_path, resolved)
+                disp = os.path.relpath(entry.path, resolved)
+            disp = disp.replace("\\", "/")
+            base = entry.name
+            disp_full = disp + "/" if etype == "directory" else disp
 
-            row: Dict[str, Any] = {"name": name}
-
-            try:
-                st = os.stat(full_path)
-            except OSError:
+            # exclude：目录命中 = 整树剪枝，文件命中 = 跳过
+            if exclude_pats is not None and (
+                any(fnmatch.fnmatchcase(base.lower(), p) for p in exclude_pats)
+                or any(fnmatch.fnmatchcase(disp.lower(), p) for p in exclude_pats)
+            ):
                 continue
 
-            for col in gather_set:
-                if col == "size":
+            # 五类正向过滤器：参数间 AND、列表内 OR；extensions 对目录直通
+            ok = True
+            if type_set is not None and etype not in type_set:
+                ok = False
+            if ok and ext_set is not None and etype != "directory":
+                _, ext = os.path.splitext(base)
+                if ext.lower().lstrip(".") not in ext_set:
+                    ok = False
+            if ok and contains_terms is not None:
+                low = disp_full.lower()
+                if not any(t in low for t in contains_terms):
+                    ok = False
+            if ok and regex_pat is not None and regex_pat.search(disp_full) is None:
+                ok = False
+
+            if ok:
+                row: Dict[str, Any] = {"name": disp_full}
+                if is_cycle:
+                    row["warn"] = True
+                # 断链检测：symlink 条目必须 stat（判定目标可达性，
+                # 与 columns 需求共用一次调用）；普通 file/dir 维持惰性
+                st = None
+                if etype == "symlink" or gather_set:
                     try:
-                        row["size"] = st.st_size
+                        st = entry.stat()
                     except OSError:
-                        row["size"] = 0
-                elif col == "permissions":
-                    row["permissions"] = stat.filemode(st.st_mode)
-                elif col == "type":
-                    if os.path.isdir(full_path):
-                        row["type"] = "directory"
-                    elif os.path.islink(full_path):
-                        row["type"] = "symlink"
-                    else:
-                        row["type"] = "file"
-                elif col == "modified_at":
-                    row["modified_at"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                elif col == "created_at":
-                    row["created_at"] = datetime.fromtimestamp(st.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
-                elif col == "extension":
-                    _, ext = os.path.splitext(item)
-                    row["extension"] = ext.lower() if ext else ""
+                        st = None
+                if etype == "symlink" and st is None:
+                    row["broken"] = True
+                if gather_set:
+                    for col in gather_set:
+                        if col == "size":
+                            row["size"] = st.st_size if st else 0
+                        elif col == "permissions":
+                            row["permissions"] = stat.filemode(st.st_mode) if st else ""
+                        elif col == "type":
+                            row["type"] = etype
+                        elif col == "modified_at":
+                            row["modified_at"] = (
+                                datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                                if st else ""
+                            )
+                        elif col == "created_at":
+                            row["created_at"] = (
+                                datetime.fromtimestamp(st.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
+                                if st else ""
+                            )
+                        elif col == "extension":
+                            _, ext = os.path.splitext(base)
+                            row["extension"] = ext.lower() if ext else ""
+                rows.append(row)
+                matched += 1
+                if matched >= max_match:
+                    stop_flags["match_cap"] = True
+                    return
 
-            rows.append(row)
-            file_count += 1
+            # 遍历与显示过滤无关：未列出的目录照样下降（exclude 剪枝与环除外）
+            if descend:
+                _scan(entry.path, depth + 1, ancestors | {rp})
+                if stop_flags["match_cap"] or stop_flags["visit_cap"]:
+                    return
 
-            if current_depth < max_depth and os.path.isdir(full_path):
-                _scan(full_path, current_depth + 1, max_depth)
+    # 根祖先链初始化：realpath 极端失败不应炸掉整个调用（退回 resolved 本身，
+    # 代价仅是该次调用失去环检测，功能不中断）
+    try:
+        root_rp = os.path.realpath(resolved)
+    except OSError:
+        root_rp = resolved
+    _scan(resolved, 1, {root_rp})
+    # 截断场景下对外口径统一为"检查到上限为止"，避免 visited 计数比文案多 1
+    visited_display = min(visited, max_visit)
 
-    if recursive == 1:
-        _scan(resolved, 1, 1)
-    elif recursive == 2:
-        _scan(resolved, 1, 2)
-    elif recursive == -1:
-        _scan(resolved, 1, 99999)
+    def _match_cap_note() -> str:
+        return (
+            f"\n目标文件夹搜索文件超过{max_match}条，当前可以通过翻页 获取前{max_match}条文件信息。"
+            "如需获取更多的文件条目，请尝试其他方法。\n"
+        )
+
+    def _visit_cap_note(matched_now: int) -> str:
+        return (
+            f"\n已检查 {max_visit} 个条目，提前停止扫描（当前匹配 {matched_now} 条）。"
+            "建议用 exclude 剪除噪音目录、收紧过滤条件或减小 recursive。\n"
+        )
 
     if not rows:
+        if filter_active:
+            msg = f"（无匹配条目，共扫描 {visited_display} 条）"
+            if stop_flags["visit_cap"]:
+                msg += _visit_cap_note(0)
+            return make_success(msg)
         return make_success("（空目录，无文件）")
 
-    # ── 排序 ──
+    # ── 排序（按警告后缀拼接前的纯路径串） ──
     if sort_by == "name":
         rows.sort(key=lambda r: r["name"].lower(), reverse=not ascending)
     else:
@@ -209,23 +402,38 @@ def file_tools_listdir(
     total = len(rows)
     start_idx = start - 1
     if start_idx >= total:
-        return make_success(f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）")
+        msg = f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）"
+        if filter_active:
+            msg += f"\n过滤统计：共扫描 {visited_display} 条，匹配 {total} 条。"
+            if stop_flags["match_cap"]:
+                msg += _match_cap_note()
+            elif stop_flags["visit_cap"]:
+                msg += _visit_cap_note(total)
+        return make_success(msg)
 
     end_idx = min(start_idx + count, total)
     page = rows[start_idx:end_idx]
 
     # ── 输出格式 ──
+    def _display_name(r: Dict[str, Any]) -> str:
+        if r.get("warn"):
+            return r["name"] + _CYCLE_WARN_SUFFIX
+        if r.get("broken"):
+            return r["name"] + _BROKEN_SYMLINK_SUFFIX
+        return r["name"]
+
     if not extra_columns:
         # 纯文本列表
-        output = "\n".join(row["name"] for row in page)
+        output = "\n".join(_display_name(r) for r in page)
     else:
         # Markdown 表格
         fieldnames = ["name"] + extra_columns
         header = "| " + " | ".join(fieldnames) + " |"
         separator = "|" + "|".join("---" for _ in fieldnames) + "|"
         data_lines = []
-        for row in page:
-            data_lines.append("| " + " | ".join(str(row.get(col, "")) for col in fieldnames) + " |")
+        for r in page:
+            cells = [_display_name(r)] + [str(r.get(col, "")) for col in extra_columns]
+            data_lines.append("| " + " | ".join(cells) + " |")
         output = header + "\n" + separator + "\n" + "\n".join(data_lines)
 
     # ── 尾部信息 ──
@@ -233,9 +441,13 @@ def file_tools_listdir(
     remaining = total - end_display
     if remaining > 0:
         output += f"\n\n当前列出的文件 {start}~{end_display}，后面还有 {remaining} 个文件。"
+    if filter_active:
+        output += f"\n过滤统计：共扫描 {visited_display} 条，匹配 {total} 条。"
 
-    if file_count >= max_files:
-        output += "\n目标文件夹搜索文件超过10000条，当前可以通过翻页 获取前10000条文件信息。如需获取更多的文件条目，请尝试其他方法。\n"
+    if stop_flags["match_cap"]:
+        output += _match_cap_note()
+    elif stop_flags["visit_cap"]:
+        output += _visit_cap_note(total)
 
     return make_success(output)
 

@@ -966,6 +966,45 @@ class TestListdirEdgeCorners:
         assert "| file |" in row
         assert row.endswith("| .txt |")   # extension 列保留前导点（旧口径）
 
+    # ── 联机验收事故回归：通道把数组序列化成字符串 ──
+
+    def test_json_encoded_string_arrays_restore(self, subdir_structure):
+        """'["py"]' 这类字符串化数组必须还原为真数组（联机事故复现）。"""
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  extensions='["txt"]',
+                                  exclude='["dir_a", "dir_b"]',
+                                  types='["file"]').content[0].text
+        assert "file_a.txt" in text
+        assert "dir_a" not in text and "dir_b" not in text
+        assert "过滤统计" in text          # 过滤器真实激活
+
+    def test_json_string_single_element(self, tmp_dir):
+        _make_files(tmp_dir, ["a.py", "b.txt"])
+        text = file_tools_listdir(tmp_dir,
+                                  extensions='["py"]').content[0].text
+        assert "a.py" in text and "b.txt" not in text
+        text2 = file_tools_listdir(tmp_dir,
+                                   contains='[".md"]').content[0].text
+        assert "无匹配条目" in text2      # 解析后确无 .md 命中
+
+    def test_columns_json_string(self, tmp_dir):
+        _make_files(tmp_dir, ["a.txt"])
+        text = file_tools_listdir(tmp_dir,
+                                  columns='["size", "type"]').content[0].text
+        assert "| name | size | type |" in text     # 不再是逐字符空转
+
+    def test_malformed_bracket_string_stays_literal(self, tmp_dir):
+        """JSON 解析失败/非数组的方括号串退回字面量 token，不炸不猜。"""
+        _make_files(tmp_dir, ["a.txt"])
+        text = file_tools_listdir(tmp_dir,
+                                  contains='["unclosed').content[0].text
+        assert "无匹配条目" in text                  # 按字面子串处理
+        text2 = file_tools_listdir(tmp_dir, exclude='{}').content[0].text
+        assert "a.txt" in text2                      # 字面 glob 无人命中
+        base = file_tools_listdir(tmp_dir).content[0].text
+        assert file_tools_listdir(tmp_dir, exclude='[]').content[0].text == base
+        # '[]' 解析为空数组 = 不过滤（无统计行，与基线逐字一致）
+
 
 class TestInfo:
     def test_file(self, tmp_file):

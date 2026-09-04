@@ -77,12 +77,27 @@ _LISTDIR_MAX_VISIT = 100000
 def _listdir_as_str_list(value: Any) -> Optional[List[str]]:
     """过滤参数输入归一为非空字符串列表。
 
-    str 视为单值列表；None/空列表/仅空串项均返回 None（即「不过滤」）。
+    str 视为单值列表，但 JSON 编码的字符串数组（如 '["a", "b"]'）会先
+    json.loads 还原再解析——部分调用通道会把数组参数序列化成字符串送达，
+    若不还原会被整体当成一个字面量 token 导致过滤器静默失真。
+    None/空列表/仅空串项均返回 None（即「不过滤」）。
     """
     if value is None:
         return None
     if isinstance(value, str):
-        value = [value]
+        s = value.strip()
+        if s.startswith(("[", "{")):
+            try:
+                parsed = json.loads(s)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, (list, tuple)):
+                value = list(parsed)
+            else:
+                # 标量/字典/解析失败 → 保留原字符串为字面量 token，不炸不猜
+                value = [value]
+        else:
+            value = [value]
     if not isinstance(value, (list, tuple)):
         return None
     items = [str(v) for v in value if str(v).strip() != ""]
@@ -224,7 +239,7 @@ def file_tools_listdir(
     )
 
     # ── 确定需要收集的列 ──
-    columns = columns or []
+    columns = _listdir_as_str_list(columns) or []
     valid_columns = {"size", "permissions", "type", "modified_at", "created_at", "extension"}
     extra_columns = [c for c in columns if c in valid_columns]
 

@@ -20,6 +20,7 @@
 - **排序次序随尾斜杠微调**：同前缀的文件/目录相对顺序会变（`'.'(0x2E) < '/'(0x2F)`，如 `a_dir.txt` 排在 `a_dir/` 前）
 - **断链符号链接以警告形式列出**：旧版对 `os.stat` 失败的条目静默丢弃，新版按 `symlink` 类型显示并行尾追加「<<<警告，符号链接目标不可达>>>」（输出阶段拼接、不参与匹配与排序，与环警告同规则），元数据列取不到时为空/0；断链判定需要 stat，故 symlink 条目必 stat（普通 file/dir 仍维持惰性 stat）
 - **根目录 realpath 失败降级**：祖先链初始化的 `os.path.realpath(resolved)` 增加 try 守卫，极端文件系统错误下退回原路径（代价仅为当次调用失去环检测），不再让整个 listdir 崩溃（行覆盖审计发现）
+- **过滤器与 columns 兼容 JSON 编码字符串数组**：联机验收发现部分调用通道会把数组参数序列化成字符串（如 `'["py", "md"]'`）送达，原宽容逻辑将其整体视为单字面量 token，导致 extensions/exclude/types 等静默失真（且无任何报错）。现 `_listdir_as_str_list` 对以 `[`/`{` 开头的字符串先 `json.loads` 还原再解析，解析失败退回字面量不炸不猜；`columns` 参数同享此归一（旧版收到字符串化数组会逐字符空转、属性列静默消失）
 - **单个目录 scandir 失败的捕获从 `PermissionError` 放宽到 `OSError`**：不可读目录跳过扫描而非抛异常
 - **早退路径不吞提示**：零匹配、`start` 越界时同样输出过滤统计与上限截断提示；无过滤器时这些消息与 v1.2.4 逐字一致
 - 内部改用 `os.scandir`，仅命中过滤器的条目才 `stat()` 采集列
@@ -27,8 +28,8 @@
 
 ### 测试
 - 新增 `TestListdirFilters` 38 例（显示格式/五过滤器语义/AND 组合/单串宽容输入/环检测与合法复用不误杀等）+ `TestListdirCapsAndFixes` 14 例（双上限早退提示/`all`+非法值顺序/无效 token/断链警告与匹配独立性/absolute 路径形态 exclude/尾斜杠排序等，双上限经模块级常量 monkeypatch 测试）；符号链接用例无权限时自动 skip（需管理员或开发者模式）
-- 全部新用例经独立审查探针复核；新增 `TestListdirEdgeCorners` 25 例（行覆盖审计补网：created_at 列、防御性 OSError 三分支、上限×递归/×越界分页、contains 字面量语义、dotfile/多后缀语义、正则中置全局标志报错、`(?i:…)` 局部组、前瞻 AND、exclude `*`/`?`/尾斜杠、页脚次序、中文路径、指向根的自环、symlink 后缀按链接名/size 随目标、非序列过滤值兜底、六列全开 Markdown）；coverage.py 分支模式审计：listdir 区域**行覆盖 215/215（100%）**、分支弧 119/120，唯一未达弧为结构不可达的防御性 elif 穷尽死弧（gather_set 按构造仅含 6 已知列）
-- 5 个旧用例断言适配新路径格式；全量 478 例通过
+- 全部新用例经独立审查探针复核；新增 `TestListdirEdgeCorners` 29 例（行覆盖审计补网：created_at 列、防御性 OSError 三分支、上限×递归/×越界分页、contains 字面量语义、dotfile/多后缀语义、正则中置全局标志报错、`(?i:…)` 局部组、前瞻 AND、exclude `*`/`?`/尾斜杠、页脚次序、中文路径、指向根的自环、symlink 后缀按链接名/size 随目标、非序列过滤值兜底、六列全开 Markdown、JSON 字符串化数组还原/columns JSON/方括号字面量兜底）；coverage.py 分支模式审计：listdir 区域**行覆盖 100%**、分支弧仅余 1 条结构不可达的防御性 elif 穷尽死弧（gather_set 按构造仅含 6 已知列）
+- 5 个旧用例断言适配新路径格式；全量 482 例通过
 
 ## v1.2.4 (2026-09-04)
 

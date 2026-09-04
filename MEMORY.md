@@ -148,3 +148,36 @@ target_param="path",   # 指定 target 参数名
 - `file_tools_trash` / `file_tools_trash_undo` 依赖 `pytrash`
 - `file_tools_append` 不会自动插入换行符——如果文件末尾没有换行符，追加内容会直接接到最后一行后面
 - `file_tools_read_lines` 使用 `split("\n")` 分割行，空行和末尾空行均保留
+
+---
+
+## v1.3.0 listdir 过滤改造（2026-09-05，未 commit）
+
+**特性总览**：新增 6 参数 `types`/`extensions`/`contains`/`regex`/`exclude`/`follow_symlink`；输出全正斜杠+目录尾斜杠；realpath 祖先链防环 + 断链警告；双上限（匹配 10000 / 检查 100000）；过滤统计 footer；482 测试，listdir 区域行覆盖 100% + 分支仅余结构不可达死弧。
+
+**核心语义契约**（改 listdir 必须遵守）：
+- 过滤器间 AND、列表内 OR；空列表/全空白/不可识别输入 = 不过滤；列表参数接受单值 str 与 JSON 字符串化数组
+- types 只控显示**不影响遍历**；遍历剪枝唯二来源 = exclude 命中目录、环检测
+- extensions：目录一律直通；后缀 = basename 最后点号后段（dotfile 无后缀、多后缀取最后段）
+- contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）
+- exclude：{basename, 显示路径去尾斜杠} 双串 fnmatch 整串、模式 `\`→`/`；尾斜杠模式够不着目录自身（区别于 contains 的 `utils/` 形态，有测试钉死）
+- 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；警告行作为普通条目受全部过滤器管辖、无尾部保底汇报
+- 断链 = symlink 条目 stat 失败；symlink 条目必 stat（普通 file/dir 维持惰性）；根 realpath 有 try 守卫（失败退 resolved，仅失去环检测不崩）
+- 双上限常量放模块级 `_LISTDIR_MAX_MATCH/_LISTDIR_MAX_VISIT`，测试用 monkeypatch 压低复现
+
+**踩坑（承前编号）**：
+6. **通道字符串化数组参数**（联机验收事故）：数组以 `'["py"]'` 字符串送达时，原「str=单值」宽容把整串当一个字面量 token → 过滤器静默失真零报错。修复：`_listdir_as_str_list` 对 `[`/`{` 开头字符串先 `json.loads` 还原、失败退回字面量；`columns` 同享归一（旧版还有逐字符空转存量问题）。
+7. **monkeypatch 打桩 OS 函数还原晚于 tmp fixture 的 rmtree**：fake scandir 泄漏进 teardown 炸 TypeError；OS 桩用例一律 `try/finally: monkeypatch.undo()`。
+8. **手工行审计的盲区**：只收目标函数嵌套 code 会漏**模块级辅助函数**；行覆盖看不出 if 只走单边——需 coverage.py `--branch` 交叉。
+
+**Windows symlink/realpath 实测事实包**（3.13/管理员）：建目录链接需管理员或开发者模式；realpath 归一大小写、无 `\\?\` 前缀，裸 `==` 可靠（链接目标全大写写法仍归一回真路径）；`shutil.rmtree` 不跟随链接可安全清理环树；`DirEntry.is_dir/is_symlink` 对断链返回 False 不抛（stat 才抛）；防环必须用**祖先链** set（非全局 visited），两链合法复用同一目录不得误杀；无防环时 6 文件小树可虚增至 2400+。
+
+**覆盖率复测口令**（coverage 7.16.0 已装 qwenpaw 环境，未进 requirements.txt）：
+```powershell
+D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage run --branch -m pytest tests -q
+D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="tools/info.py"
+```
+
+**流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
+
+**未闭环**：①重装插件后重放字符串化数组联机调用验证修复；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用）。

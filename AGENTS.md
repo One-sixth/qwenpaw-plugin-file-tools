@@ -17,7 +17,7 @@ QwenPaw 文件操作补充插件。注册 26 个 Agent 工具，补充 QwenPaw �
 | `tools/write.py` | 全量写入工具（1 个） |
 | `tools/bytes.py` | 字节级工具（4 个） |
 | `show_tool_schema.py` | 工具 schema 展示脚本 |
-| `tests/` | 300+ 个 pytest 测试 |
+| `tests/` | 480+ 个 pytest 测试 |
 
 ## 26 个工具清单
 

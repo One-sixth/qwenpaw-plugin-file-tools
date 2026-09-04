@@ -116,7 +116,7 @@ class TestListdir:
 
     def test_empty_dir(self, tmp_dir):
         result = file_tools_listdir(tmp_dir, recursive=1)
-        assert result.content[0].text == "（空目录，无文件）"
+        assert result.content[0].text == "（空目录，无条目）"
 
     def test_permission_column(self, tmp_dir):
         open(os.path.join(tmp_dir, "perm.txt"), "w").close()
@@ -798,7 +798,7 @@ class TestListdirEdgeCorners:
             text = file_tools_listdir(tmp_dir).content[0].text
         finally:
             monkeypatch.undo()          # 别让 rmtree 清理也吃 PermissionError
-        assert text == "（空目录，无文件）"            # 静默跳过，不崩溃
+        assert text == "（空目录，无条目）"            # 静默跳过，不崩溃
 
     def test_realpath_failure_no_crash(self, tmp_dir, monkeypatch):
         """根/子目录 realpath 全炸：靠双守卫降级为"不防环"，功能不中断。"""
@@ -1266,3 +1266,8 @@ class TestEntryWording:
         assert "任何非法值都会报错（与列表顺序无关）" in doc
         assert "想限定某目录请用斜杠边界" in doc    # contains 防误锚警示
         assert "(^|/)src/" in doc                  # regex 示例双模式锚定
+        # v1.3.2：输出形态预告 + 类型速查 + 平局提醒（二轮盲测批评落地）
+        assert "一行一条目" in doc
+        assert "输出末尾可能依次出现的说明行" in doc
+        assert "类型判定速查" in doc
+        assert "按 size 排序可能大面积平局" in doc

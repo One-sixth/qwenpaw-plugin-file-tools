@@ -161,7 +161,7 @@ target_param="path",   # 指定 target 参数名
 - extensions：目录一律直通；后缀 = basename 最后点号后段（dotfile 无后缀、多后缀取最后段）
 - contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）；**子串可命中父目录名**（`tools/` 被 `file-tools/` 吞），限定目录用 `/utils/` 边界（顶层够不到）或 `(^|/)utils/` regex 锚定，docstring 已警示（联机回归教训）
 - exclude：{basename, 显示路径去尾斜杠} 双串 fnmatch 整串、模式 `\`→`/`；尾斜杠模式够不着目录自身（区别于 contains 的 `utils/` 形态，有测试钉死）
-- v1.3.1 文案契约：listdir 分页/越界/start 报错一律称条目不称「文件」（TestEntryWording+迁移断言钉死）；sort 为稳定排序、平局保持收集次序不承诺可复现；目录 size 列 Windows 恒 0（零上下文盲测批评的落地）
+- v1.3.1/1.3.2 文案契约：listdir 分页/越界/start 报错/空目录一律称条目不称「文件」（TestEntryWording+迁移断言钉死）；v1.3.2 起 docstring 首段带输出形态预告（尾注/统计行/上限提示/行内警告）、follow_symlink 带类型判定速查、sort_by 带 Windows size 平局提醒；sort 为稳定排序、平局保持收集次序不承诺可复现；目录 size 列 Windows 恒 0（零上下文盲测批评的落地）
 - 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；警告行作为普通条目受全部过滤器管辖、无尾部保底汇报
 - 断链 = symlink 条目 stat 失败；symlink 条目必 stat（普通 file/dir 维持惰性）；根 realpath 有 try 守卫（失败退 resolved，仅失去环检测不崩）
 - 双上限常量放模块级 `_LISTDIR_MAX_MATCH/_LISTDIR_MAX_VISIT`，测试用 monkeypatch 压低复现

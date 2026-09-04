@@ -7,7 +7,7 @@
 ### 信息读取类
 | 工具 | 功能 | 返回格式 |
 |------|------|:--------:|
-| `file_tools_listdir` | 列出目录内容（类型/后缀/子串/正则/排除过滤、symlink 控制、递归、属性列、排序、分页；路径统一正斜杠、目录带尾斜杠） | 纯文本/Markdown |
+| `file_tools_listdir` | 列出目录内容（类型/后缀/子串/正则/gitignore 排除、symlink 控制、递归、属性列、排序、分页；路径统一正斜杠、目录带尾斜杠） | 纯文本/Markdown |
 | `file_tools_info` | 查看文件/目录元数据 | JSON |
 | `file_tools_guess` | 猜测文件类型和编码 | JSON |
 | `file_tools_diff` | 文件差异对比（unified diff） | Diff |

@@ -59,7 +59,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_listdir",
             tool_func=file_tools_listdir,
-            description="列出目录内容，支持类型/后缀/子串/正则/排除过滤、符号链接控制、递归、属性列、排序和分页。",
+            description="列出目录内容，支持类型/后缀/子串/正则/gitignore 排除、符号链接控制、递归、属性列、排序和分页。",
             icon="📂",
             tool_type="file",
             target_param="path",

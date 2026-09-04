@@ -126,17 +126,6 @@ class TestListdir:
         result_no_col = file_tools_listdir(tmp_dir, recursive=1)
         assert "permissions" not in result_no_col.content[0].text
 
-    def test_absolute_path(self, tmp_dir):
-        open(os.path.join(tmp_dir, "abs_test.txt"), "w").close()
-        # absolute=True 时返回绝对路径
-        result_abs = file_tools_listdir(tmp_dir, recursive=1, absolute=True)
-        abs_path = os.path.join(tmp_dir, "abs_test.txt").replace("\\", "/")
-        assert abs_path in result_abs.content[0].text
-        # absolute=False（默认）时只返回文件名
-        result_rel = file_tools_listdir(tmp_dir, recursive=1, absolute=False)
-        assert "abs_test.txt" in result_rel.content[0].text
-        assert abs_path not in result_rel.content[0].text
-
     def test_invalid_sort_by(self, tmp_dir):
         result = file_tools_listdir(tmp_dir, sort_by="invalid")
         assert "失败" in result.content[0].text
@@ -296,12 +285,6 @@ class TestListdirFilters:
         assert "dir_a/sub_dir1/" in lines
         assert "dir_a/sub_file1.txt" in lines
 
-    def test_display_absolute_slash_dir(self, tmp_dir):
-        os.makedirs(os.path.join(tmp_dir, "d1"))
-        text = file_tools_listdir(tmp_dir, absolute=True).content[0].text
-        assert text.strip().endswith("d1/")
-        assert "\\" not in text
-
     # ── types ──
 
     def test_types_file_hides_dirs_keeps_traversal(self, subdir_structure):
@@ -457,12 +440,6 @@ class TestListdirFilters:
                                    exclude=["dir_a\\sub*"]).content[0].text.splitlines()
         assert "dir_a/" in lines
         assert "dir_a/sub_file1.txt" not in lines
-
-    def test_exclude_in_absolute_mode_by_basename(self, subdir_structure):
-        text = file_tools_listdir(subdir_structure, recursive=-1, absolute=True,
-                                  exclude=["dir_a"]).content[0].text
-        assert "dir_a" not in text
-        assert "file_a.txt" in text
 
     def test_exclude_empty_noop(self, tmp_dir):
         _make_files(tmp_dir, ["a.txt"])
@@ -644,14 +621,6 @@ class TestListdirCapsAndFixes:
         r = file_tools_listdir(tmp_dir, types=["link"]).content[0].text
         assert "不合法" not in r
         assert "无匹配条目" in r          # 普通目录无 symlink，走过滤而非报错
-
-    # ── 绝对模式下路径形态 exclude ──
-
-    def test_exclude_path_pattern_absolute_mode(self, subdir_structure):
-        text = file_tools_listdir(subdir_structure, recursive=-1, absolute=True,
-                                  exclude=["*/dir_a/*"]).content[0].text
-        assert "dir_a/" in text                       # 目录本身保留
-        assert "sub_file1.txt" not in text            # 子项按绝对路径命中剪除
 
     # ── 尾斜杠排序顺序固化 ──
 
@@ -895,16 +864,67 @@ class TestListdirEdgeCorners:
                                   exclude=["*"]).content[0].text
         assert text.startswith("（无匹配条目")
 
+
     def test_exclude_question_mark_glob(self, tmp_dir):
         _make_files(tmp_dir, ["a.txt", "ab.txt"])
         lines = file_tools_listdir(tmp_dir, exclude=["a?.txt"]).content[0].text.splitlines()
         assert "a.txt" in lines and "ab.txt" not in lines
 
-    def test_exclude_trailing_slash_pattern_is_noop(self, subdir_structure):
-        """exclude 匹配基准无尾斜杠——"dir_a/" 模式两边都够不着（区别于 contains）。"""
+    def test_exclude_trailing_slash_dir_only(self, subdir_structure):
+        """gitignore 语义：`dir_a/` 命中目录并整树剪枝（v1.3 时代它是死模式）。"""
         text = file_tools_listdir(subdir_structure, recursive=-1,
                                   exclude=["dir_a/"]).content[0].text
-        assert "dir_a/" in text and "dir_a/sub_file1.txt" in text
+        assert "dir_a" not in text                      # 目录整树消失
+        assert "dir_b" in text                          # 其余不受影响
+
+    def test_exclude_negation_reinclude(self, tmp_dir):
+        """gitignore 取反：`!keep.log` 在 `*.log` 排除中豁免特定文件。"""
+        _make_files(tmp_dir, ["a.log", "keep.log", "b.txt"])
+        lines = file_tools_listdir(
+            tmp_dir, exclude=["*.log", "!keep.log"]).content[0].text.splitlines()
+        assert "keep.log" in lines and "a.log" not in lines and "b.txt" in lines
+
+    def test_exclude_root_anchored_slash(self, tmp_dir):
+        """gitignore 锚根：`/top.txt` 只命中根层，深层同名不中。"""
+        _make_files(tmp_dir, ["sub/", "top.txt", "sub/top.txt"])
+        lines = file_tools_listdir(tmp_dir, recursive=-1,
+                                   exclude=["/top.txt"]).content[0].text.splitlines()
+        assert "top.txt" not in lines and "sub/top.txt" in lines
+
+    def test_exclude_no_reinclude_inside_pruned_dir(self, tmp_dir):
+        """命中目录整树剪枝后，子项 `!` 豁免无法复活（与 git 行为一致）。"""
+        _make_files(tmp_dir, ["dist/", "dist/app.js", "dist/keep.js"])
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  exclude=["dist/", "!dist/keep.js"]).content[0].text
+        assert "dist" not in text and "keep.js" not in text
+
+    def test_exclude_invalid_pattern_chinese_error(self, tmp_dir):
+        """F1 钉死：半截 `!` 等非法模式必须走中文报错，不许抛异常/英文 traceback。"""
+        for bad in ("!", "! ", "[z-a]"):
+            text = file_tools_listdir(tmp_dir, exclude=[bad]).content[0].text
+            assert "失败" in text and "exclude" in text and "gitignore" in text, bad
+
+    def test_exclude_hash_is_comment(self, tmp_dir):
+        """行为漂移钉：`#` 开头模式按 gitignore 注释忽略，不排除同名文件。"""
+        _make_files(tmp_dir, ["#flag", "keep.txt"])
+        lines = file_tools_listdir(tmp_dir, exclude=["#flag"]).content[0].text.splitlines()
+        assert "#flag" in lines and "keep.txt" in lines
+
+    def test_exclude_case_insensitive(self, tmp_dir):
+        """双 lower 胶水钉：模式大小写与路径大小写互不敏感（Windows 语义）。"""
+        _make_files(tmp_dir, ["BIG/", "BIG/x.log", "Y.log"])
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  exclude=["big/", "*.LOG"]).content[0].text
+        assert "BIG" not in text and "y.log" not in text.lower().replace("big", "")
+        # 上层小写模式吞大写目录 + 大写后缀模式吞小写文件，两向都过
+
+    def test_exclude_barename_nested_prune(self, subdir_structure):
+        """gitignore 核心承诺补钉：裸名在嵌套层同样整树剪枝。"""
+        text = file_tools_listdir(subdir_structure, recursive=-1,
+                                  exclude=["sub_dir1"]).content[0].text
+        assert "sub_dir1" not in text                  # 根下 dir_a 里的嵌套目录被剪
+        assert "dir_a/sub_file1.txt" in text            # 兄弟不波及
+
 
     def test_footer_order_pagination_before_stats(self, tmp_dir):
         _make_files(tmp_dir, [f"f{i}.txt" for i in range(10)])
@@ -1257,17 +1277,18 @@ class TestEntryWording:
         text = file_tools_listdir(tmp_dir, columns=["size"]).content[0].text
         assert "| d/ | 0 |" in text            # size 语义写进文档后，行为同步钉死
 
-    def test_docstring_key_phrases_pinned(self):
+    def test_docstring_minimal_contract(self):
+        """v1.3.3 极简文档契约：只留直觉级说明，注意事项禁止回流。"""
         doc = file_tools_listdir.__doc__
-        assert "最多返回的条目数（目录、symlink 均计入）" in doc
-        assert "从第几个条目开始显示" in doc
-        assert "稳定排序，同值条目保持遍历收集次序" in doc
-        assert "Windows 下目录恒为 0" in doc
-        assert "任何非法值都会报错（与列表顺序无关）" in doc
-        assert "想限定某目录请用斜杠边界" in doc    # contains 防误锚警示
-        assert "(^|/)src/" in doc                  # regex 示例双模式锚定
-        # v1.3.2：输出形态预告 + 类型速查 + 平局提醒（二轮盲测批评落地）
-        assert "一行一条目" in doc
-        assert "输出末尾可能依次出现的说明行" in doc
-        assert "类型判定速查" in doc
-        assert "按 size 排序可能大面积平局" in doc
+        # 六个一词级保留点（实战价值浓缩）
+        assert "只影响显示，不影响遍历" in doc     # types 语义
+        assert "目录不受影响" in doc               # extensions 目录直通
+        assert "整树跳过" in doc                   # exclude 剪枝
+        assert "<<<警告>>>" in doc                 # 环/断链行内标注预告
+        assert "别名" in doc                       # dir/symlink 兼容直觉词
+        assert "re.search" in doc                  # regex 语义一词
+        # 裹脚布不得回流（v1.3.0~1.3.2 堆过的注意事项类）
+        for banned in ("所见即所搜", "先校验", "祖先链", "稳定排序",
+                       "类型判定速查", "恒为 0", "输出末尾可能依次出现"):
+            assert banned not in doc, banned
+

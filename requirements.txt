@@ -1,3 +1,4 @@
 ﻿pytrash
 puremagic>=1.20
 chardet>=7.4.3
+pathspec>=1.1

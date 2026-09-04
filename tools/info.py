@@ -10,7 +10,6 @@
 
 import csv
 import difflib
-import fnmatch
 import io
 import json
 import logging
@@ -20,6 +19,8 @@ import stat
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+
+import pathspec
 
 try:
     from ..backup.manager import list_history as _list_history
@@ -120,7 +121,6 @@ def file_tools_listdir(
     path: str,
     recursive: Union[int, str] = 1,
     columns: Optional[List[str]] = None,
-    absolute: bool = False,
     start: Union[int, str] = 1,
     count: Union[int, str] = 500,
     sort_by: str = "name",
@@ -132,23 +132,22 @@ def file_tools_listdir(
     exclude: Optional[Union[str, List[str]]] = None,
     follow_symlink: bool = True,
 ) -> str:
-    """列出目录内容。支持递归遍历、类型/后缀/子串/正则/排除五类过滤器、符号链接跟随控制、自定义属性列、排序和分页。过滤器之间 AND、列表内 OR；路径输出统一正斜杠分隔，目录条目带尾斜杠。无 columns 时返回纯文本列表（一行一条目），有 columns 时返回 Markdown 表格。提前停止与截断：匹配超 10000 条或检查超 100000 条时停止并附对应上限提示。输出末尾可能依次出现的说明行：分页尾注「当前列出的条目 X~Y，后面还有 N 个条目。」、过滤统计「过滤统计：共扫描 N 条，匹配 M 条。」（仅过滤器激活时）、上限提示；环/断链条目的行尾带「<<<警告，…>>>」内联标记，警告文字不参与过滤匹配与排序。
+    """列出目录内容，可递归、过滤、排序、分页；路径统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。
 
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。匹配超过 10000 条或检查超过 100000 条时提前停止，更多条目需缩小范围或用其他方法获取。支持整数或十进制数字字符串。
-        columns: 额外属性列的列表。可选值：size（字节数；Windows 下目录恒为 0，断链 symlink 取不到元数据时为空/0）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
-        absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。两种模式路径均统一为正斜杠「/」分隔，目录条目带尾斜杠。
-        start: 起始序号，1-based。从第几个条目开始显示，默认 1。超出条目总数时返回「没有更多条目」提示。支持整数或十进制数字字符串。
-        count: 最多返回的条目数（目录、symlink 均计入），默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。
-        sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。稳定排序，同值条目保持遍历收集次序，不承诺跨调用可复现。注意 Windows 上目录 size 恒为 0，含目录的混合清单按 size 排序可能大面积平局。
-        ascending: 排序方向。True=升序排列（默认），False=降序排列。
-        types: 条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；任何非法值都会报错（与列表顺序无关），全部合法且含 all 时本过滤器不生效。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。
-        extensions: 后缀名过滤器，如 ["py", "md"]。容忍 "py"/".py"/"*.py" 写法，大小写不敏感，列表内 OR，只匹配条目自身名的后缀；"."/"*." 这类归一后为空的无效 token 会被忽略（全部无效时=不过滤）。目录条目一律直通（不受本过滤器影响；想隐藏目录用 types=["file"]）。空列表 = 不过滤。
-        contains: 子串过滤器。对完整显示路径（正斜杠、含目录尾斜杠）做大小写不敏感的子串匹配——所见即所搜，路径任意一段命中即可，列表内 OR；匹配基准是输出串，请写正斜杠（传反斜杠不归一、不会命中）。子串可命中路径任意片段、含父目录名（如 "tools/" 会连 file-tools/ 下的条目一起命中）；想限定某目录请用斜杠边界如 "/utils/"（顶层目录够不到）或改用 regex "(^|/)utils/" 锚定。空列表 = 不过滤。
-        regex: 正则过滤器。底层实现为 re.search（子串匹配语义：模式可命中路径任意位置，无需写 .* 包裹），匹配对象为完整显示路径（正斜杠、目录带尾斜杠）。大小写敏感，可用前缀 (?i) 忽略大小写。示例：(^|/)src/ 限定 src 目录下（单 ^src/ 只命中顶层，absolute 模式下 ^ 锚在盘符头永不命中）、\\.md$ 只命中文件（目录带尾斜杠被 $ 天然排除）、/$ 只命中目录。非法正则报错。
-        exclude: 排除过滤器，glob 模式列表，如 [".git", "__pycache__", "*/tests/*", "*.tmp"]。对 {条目名, 显示路径(去尾斜杠)} 两个串做大小写不敏感的 fnmatch 整串匹配，任一命中即排除；模式中的反斜杠自动视为正斜杠。命中目录时整树剪枝（不进入、不列出），命中文件时跳过。空列表 = 不过滤。
-        follow_symlink: 是否跟随符号链接目录。True（默认）=进入符号链接目录，类型按目标判定（链接目录记 directory、链接文件记 symlink）；并启用 realpath 祖先链环检测：链接指向本次遍历路径上的祖先目录时不展开该条目，其显示行尾追加「<<<警告，发现symlink环嵌套，跳过该文件夹展开>>>」标记（警告标记不参与过滤匹配，警告行本身作为普通目录条目受各过滤器管辖）。False=符号链接一律记为 symlink 类型、不进入符号链接目录。断链（目标不存在/不可访问的符号链接）在任何模式下都会以 symlink 类型列出并在行尾追加「<<<警告，符号链接目标不可达>>>」，与环警告同规则——仅在输出阶段拼接、不参与匹配与排序，元数据列取不到时为空/0。类型判定速查：链接目录→跟随时记 directory、不跟随时记 symlink；链接文件→恒记 symlink；断链→恒记 symlink 并带行内警告。
+        recursive: 递归深度。1=仅当前目录（默认），2=含一层子目录，-1=无限递归。
+        columns: 额外属性列：size、permissions、type、modified_at、created_at、extension。不传则不显示属性列。
+        start: 起始条目序号，1-based，默认 1。
+        count: 最多返回的条目数，默认 500，范围 1~500。
+        sort_by: 排序字段：name（默认）、size、permissions、type、modified_at、created_at、extension。
+        ascending: True 升序（默认）、False 降序。
+        types: 按类型过滤：file、dir（别名 directory）、symlink（别名 link）、all=不过滤。只影响显示，不影响遍历。
+        extensions: 后缀过滤，如 ["py", "md"]。只作用于文件，目录不受影响（想隐藏目录配 types=["file"]）。
+        contains: 显示路径包含某子串即保留（大小写不敏感）。
+        regex: 显示路径命中该正则（re.search 语义）即保留。
+        exclude: 排除模式，gitignore 语法，如 [".git", "build/", "!keep.log"]。命中目录整树跳过。
+        follow_symlink: 是否进入符号链接目录，默认 True；环与断链会在输出行内以 <<<警告>>> 标注。
     """
     # ── 参数校验 ──
     recursive, err = parse_int(recursive, "recursive")
@@ -227,15 +226,22 @@ def file_tools_listdir(
     contains_list = _listdir_as_str_list(contains)
     contains_terms = [t.lower() for t in contains_list] if contains_list else None
     exclude_list = _listdir_as_str_list(exclude)
-    exclude_pats = (
-        [t.strip().lower().replace("\\", "/") for t in exclude_list]
-        if exclude_list
-        else None
-    )
+    exclude_spec = None
+    if exclude_list:
+        try:
+            exclude_spec = pathspec.PathSpec.from_lines(
+                "gitignore",
+                [t.strip().lower().replace("\\", "/") for t in exclude_list],
+            )
+        except (ValueError, re.error) as exc:
+            # 覆盖 GitIgnorePatternError（如半截 "!"，继承 ValueError）与坏字符集 re.error
+            return make_error(
+                "列出目录", f"exclude 含不合法的 gitignore 模式：{exc}"
+            )
 
     filter_active = any(
         x is not None
-        for x in (type_set, ext_set, contains_terms, regex_pat, exclude_pats)
+        for x in (type_set, ext_set, contains_terms, regex_pat, exclude_spec)
     )
 
     # ── 确定需要收集的列 ──
@@ -299,19 +305,14 @@ def file_tools_listdir(
                     is_cycle = True
                     descend = False
 
-            # 显示串：统一正斜杠；disp 不带尾斜杠（exclude 匹配用），disp_full 带（列表/匹配用）
-            if absolute:
-                disp = entry.path
-            else:
-                disp = os.path.relpath(entry.path, resolved)
-            disp = disp.replace("\\", "/")
+            # 显示串：相对遍历根、统一正斜杠；disp 不带尾斜杠（exclude 匹配用），disp_full 带（列表/匹配用）
+            disp = os.path.relpath(entry.path, resolved).replace("\\", "/")
             base = entry.name
             disp_full = disp + "/" if etype == "directory" else disp
 
-            # exclude：目录命中 = 整树剪枝，文件命中 = 跳过
-            if exclude_pats is not None and (
-                any(fnmatch.fnmatchcase(base.lower(), p) for p in exclude_pats)
-                or any(fnmatch.fnmatchcase(disp.lower(), p) for p in exclude_pats)
+            # exclude：gitignore 语义。目录带尾斜杠喂入（`build/` 型模式），命中目录=整树剪枝，命中文件=跳过；`!` 取反后到先中
+            if exclude_spec is not None and exclude_spec.match_file(
+                (disp + "/" if etype == "directory" else disp).lower()
             ):
                 continue
 

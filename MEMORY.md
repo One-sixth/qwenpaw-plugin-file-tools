@@ -17,8 +17,10 @@
 - 子模块使用 `try/except ImportError` 双模式导入，兼容 QwenPaw 动态加载和 pytest 测试
 
 ### 工具 Description 策略
-- `plugin.py` 的 `register_tool(description=...)` 写简短中文描述（1 句话），Agent 看到的参数说明来自函数 docstring 的 `Args:` 段落
-- 不单独写 skill 文档，description 就是 agent 的完整指南
+- **双通道（2026-09-04 实测修正）**：Agent（LLM）看到的工具总体描述 = **函数 docstring 第一段**（`\n\n` 截断），参数说明 = docstring 的 `Args:` 段落；`plugin.py` 的 `register_tool(description=...)` **只进 GUI**（写入 agent.json 的 `tools.builtin_tools.<name>.description`，工具选项栏展示），Agent 看不到
+- `register_tool` description 保持简短中文（1 句话），**不写依赖库名等实现细节**（v1.2.4 起：「依赖 pytrash」类语句全部移除；运行时错误提示除外）
+- 不单独写 skill 文档，docstring 就是 agent 的完整指南
+- ⚠️ GUI 文案**只在条目不存在时写入**（`_write_tool_config` 对已存在条目 skip），插件升级不刷新 → 会留 v1.0 化石长文案；刷新办法：卸载插件（条目被删）再安装，或直接改 agent.json（QwenPaw 指纹缓存支持免重启，参考 `fix_agent_desc.py`）
 
 ### 工具 Schema 生成机制
 QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()` 自动生成：
@@ -26,12 +28,20 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 函数签名 + docstring Args: → pydantic.create_model() → JSON Schema
 ```
 - 参数 description 来自 `Args:` docstring 段落
-- 总体描述（description）由 `api.register_tool(description=...)` 提供，**覆盖函数 docstring**
+- 总体描述（LLM 侧）来自 **docstring 第一段**（`\n\n` 截断）；`register_tool(description=...)` 不覆盖它，只写 GUI 配置
 - 修改参数说明 → 改 `tools/*.py` 的 `Args:` docstring
-- 修改工具总体描述 → 改 `plugin.py` 的 `api.register_tool(description=...)`
+- 修改 Agent 总体描述 → 改 `tools/*.py` 的 docstring 第一段
+- 修改 GUI 展示 → 改 `plugin.py` 的 `register_tool(description=...)` + 走上面的刷新办法
+
+### 行尾策略（2026-09-04 确立）
+- `.gitattributes` 用 **`*.py -text`**：Windows 个人仓库，仓库字节 = 工作区字节（CRLF），git 永不转换
+- 教训：旧规则 `*.py text` 会在**每次 git add 时无条件**把 blob 归一成 LF（与 core.autocrlf 无关），造成 commit 假象"整文件重写"；`text=auto`（json/md 等）反而有历史 blob 保护不会翻
+- 归一化只发生在 **add 时刻**：v1.2.2 先 add 后建 .gitattributes，才让 20 个 .py 的 CRLF blob 逃过一劫（另 6 个没逃过，已于 v1.2.4 前后归队）
+- 验收：`git ls-files --eol` 全部 `.py` 应为 `i/crlf`
 
 ### 测试配置
 - 保留 `conftest.py` 手动 `sys.path.insert(0, _project_root)`，不加 `pyproject.toml`
+- ⚠️ **pytest 和 `show_tool_schema.py` 都必须用 `qwenpaw` conda 环境**（`D:\Software\miniconda3\envs\qwenpaw\python.exe`）——依赖 agentscope，`normal` 环境没有会全量报错；全量测试现 401 个
 
 ---
 

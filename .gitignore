@@ -5,8 +5,8 @@ __pycache__/
 .pytest_cache/
 
 # 备份目录
-_file_tools_backup/
-_file_tools/history/
+_file_tools/
+file_tools_data/
 
 # IDE
 .idea/

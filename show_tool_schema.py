@@ -15,7 +15,7 @@ os.chdir(r'D:\Data\github_repo\qwenpaw-plugin-file-tools')
 
 from agentscope.tool._utils import _extract_input_schema
 
-# 全部 25 个工具
+# 全部 26 个工具
 from tools.info import (
     file_tools_listdir, file_tools_info, file_tools_guess, file_tools_diff, file_tools_history,
 )

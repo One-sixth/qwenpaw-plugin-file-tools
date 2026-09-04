@@ -1,5 +1,20 @@
 # 更新日志
 
+## v1.2.3 (2026-09-04)
+
+> 兼容性发布：QwenPaw 版本上限放宽 + 云端 Python 3.11 依赖兼容
+
+### 变更
+- **QwenPaw 兼容上限放宽**：`plugin.json` 的 `qwenpaw_version.max` 从 `2.1.0` 提升到 `2.3.0`
+- **puremagic 依赖下限放宽**：`requirements.txt` 从 `puremagic>=2.2.0` 调整为 `puremagic>=1.20`。puremagic 2.x 要求 `Python >=3.12`，而云端 QwenPaw 运行环境为 Python 3.11 装不上 2.2.0；放宽下限后 3.11 环境可安装 1.x（本地 3.12+ 环境仍可正常使用 2.2.0）
+
+### 文档
+- README 备份目录路径修正：`_file_tools/history/` → `file_tools_data/history/`（v1.2.0 已改路径，README 当时未同步）；新增 puremagic 1.x/2.x 兼容性说明
+- `file_tools_undo` docstring 中旧备份路径同步修正，重新导出 `tools_schema.json`
+- 补漏：`tools_schema.json` 中 `file_tools_undo.history_number` 的 schema 在 v1.2.2 时漏更新，本次重新导出补为 `anyOf: [integer, string]`
+- `.gitignore` 清理旧备份目录条目；`show_tool_schema.py` 工具数注释修正（25 → 26）
+
+
 ## v1.2.2 (2026-08-15)
 
 > 字符串数字参数兼容 + 报错消息优化 + 行尾统一

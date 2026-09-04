@@ -76,6 +76,8 @@ qwenpaw app
 | `puremagic` | 文件类型魔数检测 |
 | `chardet` | 文本编码自动检测 |
 
+> `puremagic` 版本要求 `>=1.20`：2.x 系列要求 Python ≥3.12，云端 QwenPaw（Python 3.11）环境需装 1.x 系列。本插件仅使用 `magic_file()`，1.x/2.x 该 API 一致，检测失败时自动降级。
+
 ## 路径规范
 
 - 相对路径默认相对于 workspace 目录
@@ -92,7 +94,7 @@ XX操作失败，因为XX原因。如果要XX，请XX。
 
 ## 历史备份机制
 
-修改类工具（append、replace_lines、insert_lines、delete_lines、replace、regex_replace、indent_lines、write、write_bytes、replace_bytes）在执行前自动备份原文件到 `_file_tools/history/` 目录。使用 `file_tools_history` 查看版本列表，`file_tools_undo` 恢复指定版本。
+修改类工具（append、replace_lines、insert_lines、delete_lines、replace、regex_replace、indent_lines、write、write_bytes、replace_bytes）在执行前自动备份原文件到 QwenPaw workspace 下的 `file_tools_data/history/` 目录（按文件路径分子目录存放）。使用 `file_tools_history` 查看版本列表，`file_tools_undo` 恢复指定版本。备份超过 30 天会在 QwenPaw 启动时自动清理。
 
 ## 字节级工具说明
 

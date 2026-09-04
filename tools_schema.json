@@ -1036,7 +1036,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_undo",
-      "description": "将文件恢复到指定历史版本。从 _file_tools/history 备份目录中读取备份覆盖写回。不触发新的备份（即恢复操作本身不会产生新的历史版本）。恢复前建议先用 file_tools_history 查看可用版本列表。history_number=1 为最旧版本，数字越大越新。",
+      "description": "将文件恢复到指定历史版本。从 workspace 的 file_tools_data/history 备份目录中读取备份覆盖写回。不触发新的备份（即恢复操作本身不会产生新的历史版本）。恢复前建议先用 file_tools_history 查看可用版本列表。history_number=1 为最旧版本，数字越大越新。",
       "parameters": {
         "properties": {
           "path": {
@@ -1044,8 +1044,15 @@
             "type": "string"
           },
           "history_number": {
-            "description": "历史版本号。1=最旧版本，数字越大版本越新。建议先用 file_tools_history 查看可用的版本列表。超出范围时报错提示。",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "历史版本号。1=最旧版本，数字越大版本越新。建议先用 file_tools_history 查看可用的版本列表。超出范围时报错提示。支持整数或十进制数字字符串。"
           }
         },
         "required": [

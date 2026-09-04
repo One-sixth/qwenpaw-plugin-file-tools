@@ -159,7 +159,7 @@ target_param="path",   # 指定 target 参数名
 - 过滤器间 AND、列表内 OR；空列表/全空白/不可识别输入 = 不过滤；列表参数接受单值 str 与 JSON 字符串化数组
 - types 只控显示**不影响遍历**；遍历剪枝唯二来源 = exclude 命中目录、环检测
 - extensions：目录一律直通；后缀 = basename 最后点号后段（dotfile 无后缀、多后缀取最后段）
-- contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）
+- contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）；**子串可命中父目录名**（`tools/` 被 `file-tools/` 吞），限定目录用 `/utils/` 边界（顶层够不到）或 `(^|/)utils/` regex 锚定，docstring 已警示（联机回归教训）
 - exclude：{basename, 显示路径去尾斜杠} 双串 fnmatch 整串、模式 `\`→`/`；尾斜杠模式够不着目录自身（区别于 contains 的 `utils/` 形态，有测试钉死）
 - 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；警告行作为普通条目受全部过滤器管辖、无尾部保底汇报
 - 断链 = symlink 条目 stat 失败；symlink 条目必 stat（普通 file/dir 维持惰性）；根 realpath 有 try 守卫（失败退 resolved，仅失去环检测不崩）
@@ -180,4 +180,4 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
 
-**未闭环**：①重装插件后重放字符串化数组联机调用验证修复；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用）。
+**未闭环**：①✅2026-09-05联机复验通过（字符串化extensions/columns生效，环/断链/合法复用全对，v1.3.0已提交）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用）。

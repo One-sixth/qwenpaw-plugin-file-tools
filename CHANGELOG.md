@@ -25,6 +25,7 @@
 - **早退路径不吞提示**：零匹配、`start` 越界时同样输出过滤统计与上限截断提示；无过滤器时这些消息与 v1.2.4 逐字一致
 - 内部改用 `os.scandir`，仅命中过滤器的条目才 `stat()` 采集列
 - `file_tools_listdir` 注册描述同步过滤器能力
+- **contains/regex docstring 防误锚警示**（联机回归后补）：旧推荐形态 `["utils/"]` 会被父目录名误吞（如仓库名 `file-tools/` 天然含 `tools/`，absolute 模式全盘命中）；现警示「子串可命中路径任意片段、含父目录名」，限定目录推荐 `"/utils/"` 斜杠边界（顶层目录够不到）或 `regex="(^|/)utils/"`。regex 示例 `^src/` 同步改 `(^|/)src/`（absolute 模式 `^` 锚在盘符头永不命中）。仅文案、逻辑零改动；schema 重导出，482 测试全绿
 
 ### 测试
 - 新增 `TestListdirFilters` 38 例（显示格式/五过滤器语义/AND 组合/单串宽容输入/环检测与合法复用不误杀等）+ `TestListdirCapsAndFixes` 14 例（双上限早退提示/`all`+非法值顺序/无效 token/断链警告与匹配独立性/absolute 路径形态 exclude/尾斜杠排序等，双上限经模块级常量 monkeypatch 测试）；符号链接用例无权限时自动 skip（需管理员或开发者模式）

@@ -161,18 +161,18 @@ class TestListdir:
         assert "f000.txt" in result.content[0].text
         assert "f004.txt" in result.content[0].text
         assert "f005.txt" not in result.content[0].text
-        assert "后面还有 15 个文件" in result.content[0].text
+        assert "后面还有 15 个条目" in result.content[0].text
         # start=3 → 第3~7个（f002 ~ f006）
         result2 = file_tools_listdir(tmp_dir, start=3, count=5)
         assert "f002.txt" in result2.content[0].text
         assert "f006.txt" in result2.content[0].text
         assert "f001.txt" not in result2.content[0].text
-        assert "后面还有 13 个文件" in result2.content[0].text
+        assert "后面还有 13 个条目" in result2.content[0].text
 
     def test_pagination_out_of_range(self, tmp_dir):
         _make_files(tmp_dir, [f"f{i}.txt" for i in range(3)])
         result = file_tools_listdir(tmp_dir, start=10)
-        assert "没有更多文件" in result.content[0].text
+        assert "没有更多条目" in result.content[0].text
         assert "共 3 个" in result.content[0].text
 
     def test_sort_ascending_descending(self, tmp_dir):
@@ -253,7 +253,7 @@ class TestListdir:
         assert "f000.txt" in lines[2]
         assert "f004.txt" in result.content[0].text
         assert "f005.txt" not in result.content[0].text
-        assert "后面还有 15 个文件" in result.content[0].text
+        assert "后面还有 15 个条目" in result.content[0].text
 
     def test_pagination_single_file(self, tmp_dir):
         open(os.path.join(tmp_dir, "only.txt"), "w").close()
@@ -503,10 +503,10 @@ class TestListdirFilters:
         text = file_tools_listdir(tmp_dir, extensions=["md"],
                                   count=2).content[0].text
         assert "m0.md" in text and "m1.md" in text and "m2.md" not in text
-        assert "后面还有 1 个文件" in text
+        assert "后面还有 1 个条目" in text
         text2 = file_tools_listdir(tmp_dir, extensions=["md"],
                                    start=5).content[0].text
-        assert "没有更多文件，共 3 个文件" in text2
+        assert "没有更多条目，共 3 个条目" in text2
 
     # ── follow_symlink / 环检测 ──
 
@@ -611,14 +611,14 @@ class TestListdirCapsAndFixes:
         _make_files(tmp_dir, ["m0.md", "m1.md", "m2.md", "z.txt"])
         text = file_tools_listdir(tmp_dir, extensions=["md"],
                                   start=10).content[0].text
-        assert "没有更多文件，共 3 个文件" in text
+        assert "没有更多条目，共 3 个条目" in text
         assert "过滤统计" in text
 
     def test_start_out_of_range_no_filter_verbatim(self, tmp_dir):
         """无过滤器时早退消息必须与 v1.2.4 逐字一致（不追加任何新行）。"""
         _make_files(tmp_dir, ["a.txt", "b.txt"])
         text = file_tools_listdir(tmp_dir, start=10).content[0].text
-        assert text == "（没有更多文件，共 2 个文件，当前从第 10 个开始）"
+        assert text == "（没有更多条目，共 2 个条目，当前从第 10 个开始）"
 
     # ── Bug2 回归：all 与非法值混合不受顺序影响 ──
 
@@ -829,7 +829,7 @@ class TestListdirEdgeCorners:
         _make_files(tmp_dir, [f"t{i}.txt" for i in range(10)])
         text = file_tools_listdir(tmp_dir, extensions=["txt"],
                                   start=100).content[0].text
-        assert "没有更多文件，共 3 个文件" in text
+        assert "没有更多条目，共 3 个条目" in text
         assert "过滤统计" in text and "搜索文件超过3条" in text
 
     def test_visit_cap_with_start_out_of_range(self, tmp_dir, monkeypatch):
@@ -837,7 +837,7 @@ class TestListdirEdgeCorners:
         _make_files(tmp_dir, [f"t{i}.txt" for i in range(20)])
         text = file_tools_listdir(tmp_dir, contains=[".txt"],
                                   start=100).content[0].text
-        assert "没有更多文件" in text and "过滤统计" in text
+        assert "没有更多条目" in text and "过滤统计" in text
         assert "提前停止扫描" in text
 
     # ── 参数语义固化（LLM 易踩的角落）──
@@ -909,7 +909,7 @@ class TestListdirEdgeCorners:
     def test_footer_order_pagination_before_stats(self, tmp_dir):
         _make_files(tmp_dir, [f"f{i}.txt" for i in range(10)])
         text = file_tools_listdir(tmp_dir, contains=[".txt"], count=3).content[0].text
-        assert text.index("当前列出的文件") < text.index("过滤统计")
+        assert text.index("当前列出的条目") < text.index("过滤统计")
 
     def test_unicode_chinese_names_match(self, tmp_dir):
         _make_files(tmp_dir, ["中文测试.txt", "other.txt"])
@@ -1234,3 +1234,35 @@ class TestStrNumParams:
         result = file_tools_diff(path_a, path_b, start="x")
         assert "失败" in result.content[0].text
         assert "start 参数应当输入整数" in result.content[0].text
+
+
+# ── v1.3.1 文案钉死：listdir 以「条目」计（零上下文盲测反馈）──
+
+class TestEntryWording:
+    """钉死盲测反馈换来的运行时文案与 docstring 关键句；改动措辞须同步改这里。"""
+
+    def test_pagination_footer_exact(self, tmp_dir):
+        _make_files(tmp_dir, [f"f{i}.txt" for i in range(3)])
+        text = file_tools_listdir(tmp_dir, count=2).content[0].text
+        assert "当前列出的条目 1~2，后面还有 1 个条目。" in text
+
+    def test_start_error_says_entries(self, tmp_dir):
+        text = file_tools_listdir(tmp_dir, start=0).content[0].text
+        assert "start 表示「从第几个条目开始显示」" in text
+
+    def test_dir_size_column_zero_on_windows(self, tmp_dir):
+        if os.sep != "\\":
+            pytest.skip("Windows 特有语义：目录 st_size 恒为 0")
+        _make_files(tmp_dir, ["d/", "e.txt"])
+        text = file_tools_listdir(tmp_dir, columns=["size"]).content[0].text
+        assert "| d/ | 0 |" in text            # size 语义写进文档后，行为同步钉死
+
+    def test_docstring_key_phrases_pinned(self):
+        doc = file_tools_listdir.__doc__
+        assert "最多返回的条目数（目录、symlink 均计入）" in doc
+        assert "从第几个条目开始显示" in doc
+        assert "稳定排序，同值条目保持遍历收集次序" in doc
+        assert "Windows 下目录恒为 0" in doc
+        assert "任何非法值都会报错（与列表顺序无关）" in doc
+        assert "想限定某目录请用斜杠边界" in doc    # contains 防误锚警示
+        assert "(^|/)src/" in doc                  # regex 示例双模式锚定

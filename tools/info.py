@@ -137,13 +137,13 @@ def file_tools_listdir(
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         recursive: 递归深度。1=仅当前目录（默认），2=包含一层子目录，-1=无限递归。匹配超过 10000 条或检查超过 100000 条时提前停止，更多条目需缩小范围或用其他方法获取。支持整数或十进制数字字符串。
-        columns: 额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
+        columns: 额外属性列的列表。可选值：size（字节数；Windows 下目录恒为 0，断链 symlink 取不到元数据时为空/0）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。
         absolute: 路径显示模式。False=相对路径（默认，以目标目录为根），True=绝对路径。两种模式路径均统一为正斜杠「/」分隔，目录条目带尾斜杠。
-        start: 起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。支持整数或十进制数字字符串。
-        count: 最多返回的文件数，默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。
-        sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。
+        start: 起始序号，1-based。从第几个条目开始显示，默认 1。超出条目总数时返回「没有更多条目」提示。支持整数或十进制数字字符串。
+        count: 最多返回的条目数（目录、symlink 均计入），默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。
+        sort_by: 排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。稳定排序，同值条目保持遍历收集次序，不承诺跨调用可复现。
         ascending: 排序方向。True=升序排列（默认），False=降序排列。
-        types: 条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；含 all 即不过滤（但其余非法值仍会报错，先校验后生效）。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。
+        types: 条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；任何非法值都会报错（与列表顺序无关），全部合法且含 all 时本过滤器不生效。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。
         extensions: 后缀名过滤器，如 ["py", "md"]。容忍 "py"/".py"/"*.py" 写法，大小写不敏感，列表内 OR，只匹配条目自身名的后缀；"."/"*." 这类归一后为空的无效 token 会被忽略（全部无效时=不过滤）。目录条目一律直通（不受本过滤器影响；想隐藏目录用 types=["file"]）。空列表 = 不过滤。
         contains: 子串过滤器。对完整显示路径（正斜杠、含目录尾斜杠）做大小写不敏感的子串匹配——所见即所搜，路径任意一段命中即可，列表内 OR；匹配基准是输出串，请写正斜杠（传反斜杠不归一、不会命中）。子串可命中路径任意片段、含父目录名（如 "tools/" 会连 file-tools/ 下的条目一起命中）；想限定某目录请用斜杠边界如 "/utils/"（顶层目录够不到）或改用 regex "(^|/)utils/" 锚定。空列表 = 不过滤。
         regex: 正则过滤器。底层实现为 re.search（子串匹配语义：模式可命中路径任意位置，无需写 .* 包裹），匹配对象为完整显示路径（正斜杠、目录带尾斜杠）。大小写敏感，可用前缀 (?i) 忽略大小写。示例：(^|/)src/ 限定 src 目录下（单 ^src/ 只命中顶层，absolute 模式下 ^ 锚在盘符头永不命中）、\\.md$ 只命中文件（目录带尾斜杠被 $ 天然排除）、/$ 只命中目录。非法正则报错。
@@ -176,7 +176,7 @@ def file_tools_listdir(
     if start < 1:
         return make_error(
             f"列出目录失败，因为 start 参数值 {start} 不合法。"
-            f"start 表示「从第几个文件开始显示」，最小值为 1。"
+            f"start 表示「从第几个条目开始显示」，最小值为 1。"
         )
 
     if count < 1 or count > 500:
@@ -417,7 +417,7 @@ def file_tools_listdir(
     total = len(rows)
     start_idx = start - 1
     if start_idx >= total:
-        msg = f"（没有更多文件，共 {total} 个文件，当前从第 {start} 个开始）"
+        msg = f"（没有更多条目，共 {total} 个条目，当前从第 {start} 个开始）"
         if filter_active:
             msg += f"\n过滤统计：共扫描 {visited_display} 条，匹配 {total} 条。"
             if stop_flags["match_cap"]:
@@ -455,7 +455,7 @@ def file_tools_listdir(
     end_display = start + len(page) - 1
     remaining = total - end_display
     if remaining > 0:
-        output += f"\n\n当前列出的文件 {start}~{end_display}，后面还有 {remaining} 个文件。"
+        output += f"\n\n当前列出的条目 {start}~{end_display}，后面还有 {remaining} 个条目。"
     if filter_active:
         output += f"\n过滤统计：共扫描 {visited_display} 条，匹配 {total} 条。"
 

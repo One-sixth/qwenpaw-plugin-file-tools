@@ -35,7 +35,7 @@
               }
             ],
             "default": null,
-            "description": "额外属性列的列表。可选值：size（字节数）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。"
+            "description": "额外属性列的列表。可选值：size（字节数；Windows 下目录恒为 0，断链 symlink 取不到元数据时为空/0）、permissions（Unix 风格权限字符串）、type（file/directory/symlink）、modified_at（最后修改时间）、created_at（创建时间）、extension（小写扩展名）。为空时不显示属性列。"
           },
           "absolute": {
             "default": false,
@@ -52,7 +52,7 @@
               }
             ],
             "default": 1,
-            "description": "起始序号，1-based。从第几个文件开始显示，默认 1。超出文件总数时返回「没有更多文件」提示。支持整数或十进制数字字符串。"
+            "description": "起始序号，1-based。从第几个条目开始显示，默认 1。超出条目总数时返回「没有更多条目」提示。支持整数或十进制数字字符串。"
           },
           "count": {
             "anyOf": [
@@ -64,11 +64,11 @@
               }
             ],
             "default": 500,
-            "description": "最多返回的文件数，默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。"
+            "description": "最多返回的条目数（目录、symlink 均计入），默认 500。范围 1~500，超出时报错。支持整数或十进制数字字符串。"
           },
           "sort_by": {
             "default": "name",
-            "description": "排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。",
+            "description": "排序字段。name=按文件名排序（默认，大小写不敏感），也可按 size、permissions、type、modified_at、created_at、extension 排序。稳定排序，同值条目保持遍历收集次序，不承诺跨调用可复现。",
             "type": "string"
           },
           "ascending": {
@@ -92,7 +92,7 @@
               }
             ],
             "default": null,
-            "description": "条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；含 all 即不过滤（但其余非法值仍会报错，先校验后生效）。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。"
+            "description": "条目类型过滤器。可选值 file、dir（别名 directory）、symlink（别名 link）、all；列表内任一命中即通过（OR），大小写不敏感；任何非法值都会报错（与列表顺序无关），全部合法且含 all 时本过滤器不生效。None 或空列表 = 不过滤。只控制显示清单，不影响是否进入目录遍历。"
           },
           "extensions": {
             "anyOf": [

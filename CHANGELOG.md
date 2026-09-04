@@ -1,5 +1,16 @@
 # 更新日志
 
+## v1.2.4 (2026-09-04)
+
+> 工具描述精简：面向 Agent 的描述去依赖库实现细节
+
+### 变更
+- **工具描述精简（去依赖库实现细节）**：
+  - `file_tools_trash` / `file_tools_trash_undo`：注册描述与 docstring 移除「依赖 pytrash」句，Args 移除「pytrash 未安装时提示安装」
+  - `file_tools_guess`：描述由「依赖 puremagic 库…辅以 chardet…」改为「根据文件魔数（magic number）检测类型，文本自动检测编码」，库名不再出现
+  - `file_tools_read_lines`：`encoding` 参数说明移除「使用 chardet」
+  - 运行时「pytrash 未安装」错误提示保持不变；`tools_schema.json` 同步重新导出，全 schema 已无依赖库名
+
 ## v1.2.3 (2026-09-04)
 
 > 兼容性发布：QwenPaw 版本上限放宽 + 云端 Python 3.11 依赖兼容

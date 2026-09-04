@@ -288,7 +288,7 @@ def file_tools_info(
 def file_tools_guess(
     path: str,
 ) -> str:
-    """猜测文件类型和编码，返回 JSON 格式。依赖 puremagic 库根据文件魔数（magic number）检测类型，辅以 chardet 检测文本编码。目录直接返回 type 为 directory。puremagic 或 chardet 未安装时降级处理。
+    """猜测文件类型和编码，返回 JSON 格式。根据文件魔数（magic number）检测类型，文本自动检测编码。目录直接返回 type 为 directory。检测库未安装时降级处理。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。如果是目录直接返回 type=directory，不执行魔数检测。

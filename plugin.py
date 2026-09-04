@@ -218,7 +218,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_trash",
             tool_func=file_tools_trash,
-            description="安全删除到回收站（可恢复）。依赖 pytrash。",
+            description="安全删除到回收站（可恢复）。",
             icon="🗑️",
             tool_type="file",
             target_param="path",
@@ -227,7 +227,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_trash_undo",
             tool_func=file_tools_trash_undo,
-            description="从回收站恢复最近删除的文件。依赖 pytrash。",
+            description="从回收站恢复最近删除的文件。",
             icon="♻️",
             tool_type="file",
             target_param="path",

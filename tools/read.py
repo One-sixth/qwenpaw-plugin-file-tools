@@ -61,7 +61,7 @@ def file_tools_read_lines(
         start_line: 起始行号，1-based，默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。
         line_count: 读取行数。正数=读取指定行数，-1=读取到文件末尾，0=报错（无意义）。支持整数或十进制数字字符串。
         max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。
-        encoding: 文件编码。auto=自动检测（默认，使用 chardet），也可指定 utf-8、gbk 等 Python 支持的编码名称。
+        encoding: 文件编码。auto=自动检测（默认），也可指定 utf-8、gbk 等 Python 支持的编码名称。
         show_line_number: 行号显示模式。True=每行带行号前缀（默认），False=直接输出原文。
     """
     resolved = resolve_path(path)

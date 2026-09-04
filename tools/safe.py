@@ -220,10 +220,10 @@ def file_tools_move(
 def file_tools_trash(
     path: str,
 ) -> str:
-    """将文件或目录安全删除到回收站（而非永久删除）。依赖 pytrash 库。删除后可通 file_tools_trash_undo 恢复。回收站内的文件保留原始路径信息，恢复时可以按原路径精确找回。
+    """将文件或目录安全删除到回收站（而非永久删除）。删除后可通 file_tools_trash_undo 恢复。回收站内的文件保留原始路径信息，恢复时可以按原路径精确找回。
 
     Args:
-        path: 要删除的文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时报错。pytrash 未安装时提示安装。
+        path: 要删除的文件或目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。路径不存在时报错。
     """
     resolved = resolve_path(path)
 
@@ -255,10 +255,10 @@ def file_tools_trash(
 def file_tools_trash_undo(
     path: str,
 ) -> str:
-    """从回收站恢复文件到原始位置。依赖 pytrash 库。按原路径精确匹配回收站条目，如果发现多条记录（如多次删除同路径文件），取最近删除的那个恢复。恢复后文件回到原始路径。
+    """从回收站恢复文件到原始位置。按原路径精确匹配回收站条目，如果发现多条记录（如多次删除同路径文件），取最近删除的那个恢复。恢复后文件回到原始路径。
 
     Args:
-        path: 原文件路径（删除前的路径）。相对路径相对于 workspace 目录，支持 ~ 展开。回收站中找不到匹配时返回提示。pytrash 未安装时提示安装。
+        path: 原文件路径（删除前的路径）。相对路径相对于 workspace 目录，支持 ~ 展开。回收站中找不到匹配时返回提示。
     """
     resolved = resolve_path(path)
 

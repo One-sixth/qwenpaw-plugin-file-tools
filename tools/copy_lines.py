@@ -15,6 +15,7 @@ try:
     from ..backup.manager import backup_file
     from ..utils import (
         detect_encoding,
+        dominant_newline as _dominant_newline,
         format_backup_info,
         make_error,
         make_success,
@@ -29,6 +30,7 @@ except ImportError:
     from backup.manager import backup_file
     from utils import (
         detect_encoding,
+        dominant_newline as _dominant_newline,
         format_backup_info,
         make_error,
         make_success,
@@ -48,23 +50,6 @@ _DST_NEWLINE_MAP = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
 
 # diff 预览中 + 组超过该行数列首尾各一半，中间省略
 _PREVIEW_MAX_LINES = 20
-
-
-def _dominant_newline(content: str) -> Optional[str]:
-    """探测文本的主要行尾（作者裁决：自复制 auto = 跟随源文件真实行尾）。
-
-    取 \\r\\n / \\n / \\r 中数量最多者，平局 CRLF 优先（Windows 文件部分
-    转换的常见形态）；完全没有换行时返回 None（落回 OS 口径）。
-    """
-    crlf = content.count("\r\n")
-    lf = content.count("\n") - crlf
-    cr = content.count("\r") - crlf
-    best = max(crlf, lf, cr)
-    if best == 0:
-        return None
-    if crlf >= lf and crlf >= cr:
-        return "\r\n"
-    return "\n" if lf >= cr else "\r"
 
 
 def _split_source_lines(

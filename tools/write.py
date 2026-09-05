@@ -11,6 +11,7 @@ from typing import Literal
 try:
     from ..backup.manager import backup_file, get_last_backup_error
     from ..utils import (
+        detect_file_newline,
         format_backup_info,
         format_error,
         make_error,
@@ -21,6 +22,7 @@ try:
 except ImportError:
     from backup.manager import backup_file, get_last_backup_error
     from utils import (
+        detect_file_newline,
         format_backup_info,
         format_error,
         make_error,
@@ -44,7 +46,7 @@ def file_tools_write(
         path: 要写入的文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件已存在时自动备份，不存在时直接创建。
         content: 要写入的文本内容。\\r\\n 和 \\r 写入前自动统一为 \\n，避免文本模式二次转换。
         encoding: 文件编码，默认 utf-8。支持 utf-8、gbk 等 Python open() 支持的编码。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持原文件主行尾（新建/空/无行尾按操作系统），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -74,13 +76,16 @@ def file_tools_write(
                 f"备份原文件失败（{error_detail}）",
             )
 
-    # 解析 line_separator（Literal 约束确保只传 auto / \\n / \\r\\n）
-    newline: str | None = None  # auto → Python 默认行为（按平台转换）
+    # 解析 line_separator（auto=保持已存在文件主行尾，v1.7.0 家族裁决；
+    # 新建/空/无行尾/探测失败落回 OS 口径）
+    newline: str | None = None  # None=Python 默认行为（按平台转换）
     if line_separator == "\\n":
         newline = "\n"
     elif line_separator == "\\r\\n":
         newline = "\r\n"
-    # else: auto → newline=None，Python 自动处理
+    elif os.path.isfile(resolved):
+        newline = detect_file_newline(resolved, encoding)
+    # else: auto 且新建 → None，按 OS
 
     # 原子写入：先写 .temp 文件，再 shutil.move 替换
     tmp_path = resolved + ".temp_file"

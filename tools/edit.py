@@ -10,8 +10,9 @@
 - file_tools_replace: 查找替换（子串）
 - file_tools_regex_replace: 正则替换
 
-文件 I/O 使用 Python 文本模式，统一用 \\\\n 换行。
-Windows 上读写时 \\\\n ↔ \\\\r\\\\n 由 Python 自动处理。
+文件 I/O 使用 Python 文本模式，内部统一用 \\\\n 换行。
+写回行尾由 line_separator 决定：auto=保持文件主行尾（v1.7.0 家族裁决），
+\\\\n/\\\\r\\\\n 强制指定；空/无行尾/探测失败落回 OS。append 例外，auto=OS。
 """
 
 import logging
@@ -24,6 +25,7 @@ try:
     from ..utils import (
         LINE_CONTENT_TRUNCATE,
         detect_encoding,
+        detect_file_newline,
         format_backup_info,
         format_error,
         make_error,
@@ -39,6 +41,7 @@ except ImportError:
     from utils import (
         LINE_CONTENT_TRUNCATE,
         detect_encoding,
+        detect_file_newline,
         format_backup_info,
         format_error,
         make_error,
@@ -59,11 +62,33 @@ def _write_file(path: str, content: str, encoding: str, newline: Optional[str] =
     先写 .temp_file 再 os.replace 替换，避免写入中断导致文件损坏。
     newline 参数与 open() 的 newline 参数语义一致：
     None=Python自动处理，\\n=LF，\\r\\n=CRLF。
+    newline 非 \\n 时先折叠 content 中的 \\r\\n（防转换叠加 \\r\\r\\n，
+    与 copy_lines 同一守卫；幂等，已折叠内容无感知）。
     """
+    if newline != "\n":
+        content = content.replace("\r\n", "\n")
     tmp_path = path + ".temp_file"
     with open(tmp_path, "w", encoding=encoding, newline=newline) as f:
         f.write(content)
     os.replace(tmp_path, path)
+
+
+# 行结束符解析（v1.7.0 家族行尾保真，作者裁决：auto=保持目标主行尾）
+def _resolve_newline(
+    resolved_path: str,
+    resolved_encoding: str,
+    line_separator: str,
+) -> Optional[str]:
+    """把 line_separator 解析为 open() 的 newline 参数。
+
+    \\n → LF、\\r\\n → CRLF 直接生效；auto=探测目标文件真实主行尾跟随，
+    空/无行尾/探测失败返回 None 落回 OS 口径（与 copy_lines 一致）。
+    """
+    if line_separator == "\\n":
+        return "\n"
+    if line_separator == "\\r\\n":
+        return "\r\n"
+    return detect_file_newline(resolved_path, resolved_encoding)
 
 
 # ── 9. file_tools_append ──────────────────────────────────
@@ -143,7 +168,7 @@ def file_tools_replace_lines(
         end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         content: 替换内容。用 \\n 拆成多行，因此可以增加或减少行数。\\r\\n/\\r 写入前自动统一为 \\n。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -181,9 +206,8 @@ def file_tools_replace_lines(
     new_lines_content = normalize_newlines(content).split("\n")
     lines[actual_start:actual_end] = new_lines_content
 
-    # 解析 line_separator
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
@@ -281,7 +305,7 @@ def file_tools_insert_lines(
         line: 插入位置，1-based。在第 line 行之前插入，line 大于文件总行数时追加到文件末尾。最小值为 1。支持整数或十进制数字字符串。
         content: 要插入的文本内容。用 \\n 拆成多行，因此可以一次插入多行。\\r\\n/\\r 写入前自动统一为 \\n。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -311,9 +335,8 @@ def file_tools_insert_lines(
     old_lines = lines.copy()
     lines[insert_pos:insert_pos] = insert_lines
 
-    # 解析 line_separator
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
@@ -361,7 +384,7 @@ def file_tools_delete_lines(
         start_line: 起始行号，1-based，包含。最小值为 1。超出文件总行数时报错。支持整数或十进制数字字符串。
         end_line: 结束行号，1-based，包含。必须 >= start_line。超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -397,9 +420,8 @@ def file_tools_delete_lines(
     actual_end = min(end_line, total_lines)
     del lines[actual_start:actual_end]
 
-    # 解析 line_separator
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     try:
         _write_file(resolved, "\n".join(lines), resolved_encoding, newline=nl)
@@ -450,7 +472,7 @@ def file_tools_replace(
         count: 替换次数，默认 1。每次调用只替换第一个匹配，避免意外替换过多。必须 >= 1。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -530,9 +552,8 @@ def file_tools_replace(
     new_range_lines = new_range.split("\n")
     new_lines[actual_start:actual_end] = new_range_lines
 
-    # 解析 line_separator
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     # 写入文件
     try:
@@ -591,7 +612,7 @@ def file_tools_regex_replace(
         count: 替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
         dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     resolved = resolve_path(path)
 
@@ -697,9 +718,8 @@ def file_tools_regex_replace(
     new_lines = lines.copy()
     new_lines[actual_start:actual_end] = range_content.split("\n")
 
-    # 解析 line_separator
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     try:
         _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
@@ -747,7 +767,7 @@ def file_tools_indent_lines(
         mode: 缩进模式。expand=增加缩进（默认），shrink=减少缩进。shrink 时最多删除到行首第一个非空白字符。
         count: 添加或删除的空白字符数量。默认 4。必须 >= 0。支持整数或十进制数字字符串。
         char: 填充字符。默认空格（' '），也可传 '\\t' 使用制表符。仅 expand 模式使用。
-        line_separator: 行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
     """
     resolved = resolve_path(path)
@@ -812,9 +832,8 @@ def file_tools_indent_lines(
     if history_number is None:
         return make_error("缩进调整", "备份原文件失败。因为获取会话文件路径失败。")
 
-    # 根据 line_separator 选择 newline 参数
-    newline_map = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
-    nl = newline_map.get(line_separator, None)
+    # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
+    nl = _resolve_newline(resolved, resolved_encoding, line_separator)
 
     try:
         content = "\n".join(lines)

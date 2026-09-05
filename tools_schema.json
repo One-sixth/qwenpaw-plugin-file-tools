@@ -602,7 +602,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -654,7 +654,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -712,7 +712,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -800,7 +800,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -900,7 +900,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -980,7 +980,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",
@@ -1169,7 +1169,7 @@
           },
           "line_separator": {
             "default": "auto",
-            "description": "行结束符控制。auto=按操作系统自动处理（Windows 上 \\n→\\r\\n），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "行结束符控制。auto=保持原文件主行尾（新建/空/无行尾按操作系统），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",

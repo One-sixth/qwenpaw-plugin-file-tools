@@ -127,6 +127,35 @@ def read_file_content(
     return content, resolved_encoding
 
 
+# ── 主行尾探测（v1.7.0 家族行尾保真）─────────────────────
+
+
+def dominant_newline(content: str) -> Optional[str]:
+    """探测文本的主行尾（作者裁决：auto = 保持文件真实主行尾）。
+
+    取 \\r\\n / \\n / \\r 中数量最多者，平局 CRLF 优先（Windows 文件部分
+    转换的常见形态）；完全没有换行时返回 None（落回 OS 口径）。
+    """
+    crlf = content.count("\r\n")
+    lf = content.count("\n") - crlf
+    cr = content.count("\r") - crlf
+    best = max(crlf, lf, cr)
+    if best == 0:
+        return None
+    if crlf >= lf and crlf >= cr:
+        return "\r\n"
+    return "\n" if lf >= cr else "\r"
+
+
+def detect_file_newline(path: str, encoding: str) -> Optional[str]:
+    """探测已存在文件的真实主行尾；探测失败按无行尾处理（落回 OS）。"""
+    try:
+        with open(path, "r", encoding=encoding, newline="") as f:
+            return dominant_newline(f.read())
+    except Exception:
+        return None
+
+
 # ── 行内容截断 ────────────────────────────────────────────
 
 

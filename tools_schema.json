@@ -1443,7 +1443,7 @@
               }
             ],
             "default": -1,
-            "description": "插入到 dst_file 第 insert_line 行之前，1-based；1 = 插入到开头；-1 或不填 = 末尾追加；超过总行数与 -1 同意；目标新建时忽略。支持整数或十进制数字字符串。"
+            "description": "插入到 dst_file 第 insert_line 行之前，1-based；1 = 插入到开头；-1 或不填 = 末尾追加；超过总行数与 -1 同意；新建时任意合法值自然收敛为整体新建。支持整数或十进制数字字符串。"
           },
           "src_encoding": {
             "default": "auto",

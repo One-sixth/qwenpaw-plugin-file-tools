@@ -168,7 +168,7 @@ def file_tools_copy_lines(
         start_line: 源选中起始行号，1-based，包含。超出源文件总行数时报错。支持整数或十进制数字字符串。
         end_line: 源选中结束行号，1-based，包含。必须 >= start_line。超出源文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         dst_file: 目标文件路径。留空（None）= 复制到 src_file 自身。不存在时自动新建（连同父目录），已存在时修改前自动备份。
-        insert_line: 插入到 dst_file 第 insert_line 行之前，1-based；1 = 插入到开头；-1 或不填 = 末尾追加；超过总行数与 -1 同意；目标新建时忽略。支持整数或十进制数字字符串。
+        insert_line: 插入到 dst_file 第 insert_line 行之前，1-based；1 = 插入到开头；-1 或不填 = 末尾追加；超过总行数与 -1 同意；新建时任意合法值自然收敛为整体新建。支持整数或十进制数字字符串。
         src_encoding: 源文件编码。auto=自动检测（默认），也可指定编码名称。
         dst_encoding: 目标文件编码。auto=已存在时检测自身编码、新建时沿用源文件编码；也可指定编码名称。
         src_line_separator: 源文件拆行方式。auto=先把 \\r\\n/\\r 统一为 \\n 再拆行（默认）；指定 \\n 或 \\r\\n=仅按该行尾拆行，其余换行符保留在行内容中。
@@ -204,14 +204,14 @@ def file_tools_copy_lines(
     except Exception as e:
         return make_error("复制行", f"读取源文件时出错：{e}")
 
+    # list 模型（作者裁决）：拆行结果的每个元素都是真实行，
+    # 文件末尾换行对应的空行也是一行，行数即 src_total，无幻影特判。
     src_total = len(src_lines)
-    # 末尾空元素是文件换行的记账位，不算可选内容行
-    src_content_total = src_total - 1 if src_lines[-1] == "" else src_total
-    if start_line > src_content_total:
+    if start_line > src_total:
         return make_error(
-            "复制行", f"起始行号 {start_line} 超出源文件范围（共 {src_content_total} 行）"
+            "复制行", f"起始行号 {start_line} 超出源文件范围（共 {src_total} 行）"
         )
-    actual_end = min(end_line, src_content_total)
+    actual_end = min(end_line, src_total)
     block = src_lines[start_line - 1 : actual_end]
 
     # ── 确定目标文件（留空/同路径 = 自复制） ──
@@ -231,36 +231,37 @@ def file_tools_copy_lines(
     # ── 读目标文件基线 ──
     if self_copy:
         base_lines = list(src_lines)
-        dst_enc = src_enc if dst_encoding == "auto" else dst_encoding
         fresh = False
     elif dst_exists:
         try:
             base_lines, dst_enc = read_file_lines(dst_resolved, dst_encoding)
         except Exception as e:
             return make_error("复制行", f"读取目标文件时出错：{e}")
-        if empty_dst and dst_encoding == "auto":
-            # 空文件没有自身编码可言，与新建一样沿用源编码
-            dst_enc = src_enc
         fresh = False
     else:
         base_lines = []
         fresh = True
-        dst_enc = src_enc if dst_encoding == "auto" else dst_encoding
+        dst_enc = dst_encoding
         parent = os.path.dirname(dst_resolved)
         try:
             os.makedirs(parent, exist_ok=True)
         except Exception as e:
             return make_error("复制行", f"创建目标目录「{parent}」失败：{e}")
 
+    # 编码继承链一句话规则：auto 且目标没有自己的字节（自复制/不存在/0 字节）
+    # 时无从检测自身，沿用源编码；显式 dst_encoding 一律直接生效
+    if dst_encoding == "auto" and (self_copy or fresh or empty_dst):
+        dst_enc = src_enc
+
     # ── 计算插入位置 ──
+    # 无新建特判（作者特例扫荡裁决）：空基线下一切落点自然收敛到 0，
+    # 非法落点与已存在目标同规报错
     dst_total = len(base_lines)
     append_mode = insert_line == -1
-    if fresh:
-        insert_pos = 0
-    elif append_mode or insert_line > dst_total:
+    if append_mode or insert_line > dst_total:
         # 超过末尾与 -1 同意：自动追加到末尾（作者裁决）。
         # 文件以换行结尾（有末尾空行）时插到空行之前
-        insert_pos = dst_total - 1 if base_lines[-1] == "" else dst_total
+        insert_pos = dst_total - 1 if base_lines and base_lines[-1] == "" else dst_total
         append_mode = True
     else:
         if insert_line < 1:
@@ -282,14 +283,15 @@ def file_tools_copy_lines(
     result_lines[insert_pos:insert_pos] = block
     new_total = len(result_lines)
 
+    # list 模型：join 产出的 \n 就是行与行之间的终止符；文件末尾
+    # 是否有换行由数据自身决定（选区含末尾空行→有，止于中途→裸尾），
+    # 不做补换行特判（作者裁决：不需要向目标文件末尾补换行符）。
     content = "\n".join(result_lines)
-    if fresh:
-        content += "\n"  # 新建文件补末尾换行，成为规范文本文件（单空行也算）
 
     nl = _DST_NEWLINE_MAP.get(dst_line_separator, None)
-    if dst_line_separator == "auto" and dst_exists and not empty_dst:
+    if dst_line_separator == "auto" and dst_exists:
         # 作者裁决：auto = 保持目标文件主行尾（自复制时目标即源文件）；
-        # 新建/空文件/无换行文件落回 OS 口径
+        # 0 字节/无换行文件探测自然得 None，与新建一样落回 OS，无需特判
         follow = src_sep if self_copy else _detect_file_newline(dst_resolved, dst_enc)
         if follow:
             nl = follow

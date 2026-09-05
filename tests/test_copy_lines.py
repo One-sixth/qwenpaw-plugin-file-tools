@@ -67,9 +67,11 @@ class TestCrossFileBasics:
         assert _read_lines(dst_file) == ["B1", "B2", "B3", "A1"]
 
     def test_end_line_clamped(self, src_file, dst_file):
+        """list 模型：5 内容行 + 末尾空行 = 共 6 行，钳位含末尾空行。"""
         result = file_tools_copy_lines(src_file, 4, 999, dst_file)
-        assert "第 4-5 行（2 行）" in _text(result)
-        assert _read_lines(dst_file)[-2:] == ["A4", "A5"]
+        assert "第 4-6 行（3 行）" in _text(result)
+        raw = _read_bytes(dst_file).decode("utf-8")
+        assert raw == "B1\nB2\nB3\nA4\nA5\n\n"
 
     def test_single_line(self, src_file, dst_file):
         file_tools_copy_lines(src_file, 3, 3, dst_file)
@@ -110,7 +112,8 @@ class TestNewDst:
         dst = os.path.join(tmp_dir, "out.txt")
         result = file_tools_copy_lines(src_file, 1, 2, dst, dst_line_separator="\\n")
         assert "新建" in _text(result)
-        assert _read_bytes(dst) == b"A1\nA2\n"
+        # 选区止于文件中途 → 新文件裸尾，不补末尾换行（作者裁决）
+        assert _read_bytes(dst) == b"A1\nA2"
 
     def test_no_backup_for_new(self, src_file, tmp_dir):
         dst = os.path.join(tmp_dir, "out.txt")
@@ -122,13 +125,18 @@ class TestNewDst:
         file_tools_copy_lines(src_file, 1, 1, dst)
         assert os.path.isfile(dst)
 
-    def test_insert_line_ignored_for_new(self, src_file, tmp_dir):
-        """目标不存在自动新建：内容整体即结果，insert_line 无意义（含 0/-2 宽容）。"""
-        for i, bogus in enumerate((99, 0, -2, None)):
+    def test_insert_line_converges_for_new(self, src_file, tmp_dir):
+        """新建无既有行：合法 insert_line 自然收敛为整体新建；非法落点与已存在目标同规报错。"""
+        for i, ok in enumerate((99, 1, -1, None)):
             dst = os.path.join(tmp_dir, f"out{i}.txt")  # 每轮都是新建
-            r = file_tools_copy_lines(src_file, 1, 2, dst, insert_line=bogus)
-            assert "失败" not in _text(r), f"insert_line={bogus} 新建应被忽略"
+            r = file_tools_copy_lines(src_file, 1, 2, dst, insert_line=ok)
+            assert "失败" not in _text(r), f"insert_line={ok} 应收敛为新建"
             assert _read_lines(dst) == ["A1", "A2"]
+        for bogus in (0, -2):
+            dst = os.path.join(tmp_dir, f"bad{bogus}.txt")
+            r = file_tools_copy_lines(src_file, 1, 2, dst, insert_line=bogus)
+            assert "不合法" in _text(r), f"insert_line={bogus} 应与已存在目标同规报错"
+            assert not os.path.exists(dst)  # 校验先于创建，零污染
 
     def test_empty_dst_any_line_lands_alone(self, src_file, tmp_dir):
         """空文件目标无需特判：任意合法 insert_line 都落在唯一位置。"""
@@ -167,7 +175,13 @@ class TestValidation:
 
     def test_start_over_total(self, src_file, dst_file):
         result = file_tools_copy_lines(src_file, 7, 8, dst_file)
-        assert "超出源文件范围（共 5 行）" in _text(result)
+        assert "超出源文件范围（共 6 行）" in _text(result)
+
+    def test_start_at_trailing_empty_line_legal(self, src_file, dst_file):
+        """末尾空行是真实行：可入选区，拷到已终止目标=追加一个空行。"""
+        result = file_tools_copy_lines(src_file, 6, 6, dst_file)
+        assert "第 6-6 行（1 行）" in _text(result)
+        assert _read_lines(dst_file) == ["B1", "B2", "B3", ""]
 
     def test_insert_zero_with_hint(self, src_file, dst_file):
         result = file_tools_copy_lines(src_file, 1, 1, dst_file, insert_line=0)
@@ -267,7 +281,8 @@ class TestAdversarialFixes:
         file_tools_copy_lines(src, 1, 2, dst, src_line_separator="\\n")
         raw = _read_bytes(dst)
         assert b"\r\r\n" not in raw
-        assert raw in (b"A1\r\nA2\r\n", b"A1\nA2\n")  # Windows/POSIX 皆字节级还原
+        # 新建不补换行：行尾裸 \r 是 strict 行内容，缝隙按 OS 复原
+        assert raw in (b"A1\r\nA2\r", b"A1\nA2\r")
 
     def test_m1_append_existing_crlf_dst(self, tmp_dir):
         src = _make(os.path.join(tmp_dir, "c.txt"), "A1\r\nA2\r\n", newline="")
@@ -278,13 +293,14 @@ class TestAdversarialFixes:
         assert raw.replace(b"\r\n", b"\n").endswith(b"A1\nA2\n")
 
     def test_m2_fresh_single_empty_line(self, tmp_dir):
-        """M2：只复制一条空行，新建目标须写出一个 \\n 而非 0 字节，摘要不谎报。"""
+        """M2（list 模型修正）：拷一条空行 → 0 字节目标，0 字节文件本身就是一行空行，摘要与重读域一致。"""
         src = _make(os.path.join(tmp_dir, "s.txt"), "a\n\nb\n")
         dst = os.path.join(tmp_dir, "out.txt")
         result = file_tools_copy_lines(src, 2, 2, dst,
                                        dst_line_separator="\\n")
-        assert _read_bytes(dst) == b"\n"
+        assert _read_bytes(dst) == b""
         assert "共 1 行" in _text(result)
+        assert _read_bytes(dst).decode("utf-8").split("\n") == [""]
 
     def test_m3_empty_dst_inherits_src_encoding(self, tmp_dir):
         """M3：空文件「视为新建」则编码沿用也要同果。"""
@@ -293,6 +309,7 @@ class TestAdversarialFixes:
             f.write("中文第一行\n".encode("gbk"))
         dst = _make(os.path.join(tmp_dir, "e.txt"), "")
         file_tools_copy_lines(src, 1, 1, dst, dst_line_separator="\\n")
+        # 已存在的空文件 = 一行末尾空行（list 模型）；填入内容后空行让位行尾
         assert _read_bytes(dst) == "中文第一行\n".encode("gbk")
 
     @pytest.mark.skipif(os.name != "nt", reason="Windows 符号链接需开发者模式/管理员")
@@ -425,12 +442,17 @@ class TestSelfCopyNewlinePreserve:
         assert _read_bytes(dst) == b"B1\r\nA1\r\n"
 
     def test_new_dst_auto_still_os(self, tmp_dir):
-        """无内容可保持（新建）→ 仍 OS 口径，本裁决唯一的换行改写面。"""
+        """无内容可保持（新建）→ 行尾字符仍 OS 口径；选区止于中途行则裸尾。"""
         src = _make(os.path.join(tmp_dir, "s.txt"), "A1\nA2\n")
         dst = os.path.join(tmp_dir, "brand_new.txt")
         file_tools_copy_lines(src, 1, 2, dst)
-        expect = b"A1\r\nA2\r\n" if os.name == "nt" else b"A1\nA2\n"
+        expect = b"A1\r\nA2" if os.name == "nt" else b"A1\nA2"
         assert _read_bytes(dst) == expect
+        # 选区含末尾空行（第 3 行）→ 自带末尾终止换行
+        dst2 = os.path.join(tmp_dir, "brand_new2.txt")
+        file_tools_copy_lines(src, 1, 3, dst2)
+        expect2 = b"A1\r\nA2\r\n" if os.name == "nt" else b"A1\nA2\n"
+        assert _read_bytes(dst2) == expect2
 
 
 class TestEncoding:
@@ -445,14 +467,14 @@ class TestEncoding:
         src = self._make_gbk(os.path.join(tmp_dir, "g.txt"))
         dst = os.path.join(tmp_dir, "out.txt")
         file_tools_copy_lines(src, 1, 1, dst, dst_line_separator="\\n")
-        assert _read_bytes(dst).decode("gbk") == "中文第一行\n"
+        assert _read_bytes(dst).decode("gbk") == "中文第一行"
 
     def test_explicit_dst_encoding_transcodes(self, tmp_dir):
         src = self._make_gbk(os.path.join(tmp_dir, "g.txt"))
         dst = os.path.join(tmp_dir, "out.txt")
         file_tools_copy_lines(src, 1, 2, dst, dst_encoding="utf-8",
                               dst_line_separator="\\n")
-        assert _read_bytes(dst).decode("utf-8") == "中文第一行\n中文第二行\n"
+        assert _read_bytes(dst).decode("utf-8") == "中文第一行\n中文第二行"
 
     def test_existing_dst_keeps_own_encoding(self, tmp_dir):
         src = _make(os.path.join(tmp_dir, "u.txt"), "U1\nU2\n")
@@ -492,7 +514,8 @@ class TestSeparators:
                                        src_line_separator="\\r\\n",
                                        dst_line_separator="\\n")
         assert "（1 行）" in _text(result)
-        assert _read_bytes(dst) == b"A1\nA2\nA3\nA4\nA5\n\n"
+        # 整文件就是这一行的内容（含内部与末尾 \n），新建不补 → 字节原样
+        assert _read_bytes(dst) == b"A1\nA2\nA3\nA4\nA5\n"
 
     def test_strict_lf_split_on_crlf_file_roundtrip(self, tmp_dir):
         """显式 \\n 拆 CRLF 文件：\\r 留在行内容中，新建目标字节级还原。"""
@@ -502,7 +525,7 @@ class TestSeparators:
         file_tools_copy_lines(src, 1, 2, dst,
                               src_line_separator="\\n",
                               dst_line_separator="\\n")
-        assert _read_bytes(dst) == b"A1\r\nA2\r\n"
+        assert _read_bytes(dst) == b"A1\r\nA2\r"
 
     def test_invalid_src_separator_falls_back(self, src_file, dst_file):
         file_tools_copy_lines(src_file, 1, 1, dst_file,
@@ -511,13 +534,14 @@ class TestSeparators:
 
 
 class TestEdgeCases:
-    def test_copy_from_empty_src_errors(self, tmp_dir, dst_file):
-        """空文件没有可选内容行（末尾换行的记账位不算行），报错不自娱。"""
+    def test_empty_src_is_one_trailing_line(self, tmp_dir, dst_file):
+        """0 字节文件 = 一行真实空行（list 模型公理）；拷它 = 给目标追加一个空行。"""
         src = _make(os.path.join(tmp_dir, "e.txt"), "")
         result = file_tools_copy_lines(src, 1, 1, dst_file)
-        text = _text(result)
-        assert "失败" in text and "共 0 行" in text
-        assert _read_lines(dst_file) == ["B1", "B2", "B3"]
+        assert "第 1-1 行（1 行）" in _text(result)
+        assert _read_lines(dst_file) == ["B1", "B2", "B3", ""]
+        result2 = file_tools_copy_lines(src, 2, 2, dst_file)
+        assert "超出源文件范围" in _text(result2)
 
     def test_large_block_preview_omitted(self, tmp_dir):
         src = _make(os.path.join(tmp_dir, "big.txt"),
@@ -547,7 +571,7 @@ class TestDocstringContract:
         "沿用源文件编码",
         "仅按该行尾拆行",
         "超过总行数与 -1 同意",
-        "目标新建时忽略",
+        "自然收敛为整体新建",
         "保持目标文件主行尾",
     ]
 

@@ -278,6 +278,10 @@ def format_backup_info(backup_path: str, history_number: int) -> str:
 
 
 def format_error(action: str, reason: str, suggestion: str = "") -> str:
+    # 全仓 39 处 reason 自带句尾「。」，此处兜底去重，杜绝「。。」（五轮盲测批评🥉）
+    reason = reason.rstrip()
+    if reason.endswith("。"):
+        reason = reason[:-1]
     msg = f"{action}失败，因为{reason}。"
     if suggestion:
         msg += suggestion

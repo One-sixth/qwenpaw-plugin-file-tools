@@ -139,6 +139,17 @@ class TestFormatError:
         assert "删除失败" in msg
         assert "权限不足" in msg
 
+    def test_reason_trailing_period_dedup(self):
+        """五轮盲测批评🥉：reason 句尾自带「。」不得拼出「。。」。"""
+        for reason in ("不填为全部。", "最小值为 1。 ", "参数矛盾。"):
+            msg = format_error("列出目录", reason)
+            assert "。。" not in msg, reason
+            assert msg.endswith("。"), reason
+        # suggestion 原样拼接不受影响
+        msg = format_error("复制", "目标已存在。", "请设置 overwrite=True。")
+        assert "。。" not in msg.split("请设置")[0]
+        assert msg.endswith("overwrite=True。")
+
 
 class TestGuessFileType:
     def test_text_file(self, tmp_file):

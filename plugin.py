@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """File Tools 插件入口。
 
-注册 25 个文件操作工具到 QwenPaw Agent 工具箱。
+注册 27 个文件操作工具到 QwenPaw Agent 工具箱。
 """
 
 import logging
@@ -30,6 +30,7 @@ from .tools.edit import (
     file_tools_regex_replace,
     file_tools_indent_lines,
 )
+from .tools.copy_lines import file_tools_copy_lines
 from .tools.safe import (
     file_tools_copy,
     file_tools_move,
@@ -53,7 +54,7 @@ class FileToolsPlugin:
     """File Tools 插件主类。"""
 
     def register(self, api: PluginApi):
-        logger.info("注册 File Tools 插件（25 个工具）...")
+        logger.info("注册 File Tools 插件（27 个工具）...")
 
         # ── 信息读取类 ──
         api.register_tool(
@@ -195,6 +196,15 @@ class FileToolsPlugin:
             target_param="path",
             enabled=True,
         )
+        api.register_tool(
+            tool_name="file_tools_copy_lines",
+            tool_func=file_tools_copy_lines,
+            description="把源文件选中的行复制到目标文件指定位置（内容不经过上下文；目标不存在自动新建、已存在自动备份；留空目标=复制到自身）。",
+            icon="🧷",
+            tool_type="file",
+            target_param="dst_file",
+            enabled=True,
+        )
 
         # ── 安全文件操作类（不触发备份） ──
         api.register_tool(
@@ -311,7 +321,7 @@ class FileToolsPlugin:
             priority=90,
         )
 
-        logger.info("✓ File Tools 插件注册完成（26 个工具）")
+        logger.info("✓ File Tools 插件注册完成（27 个工具）")
 
     def _startup_cleanup(self) -> None:
         """启动时清理超过 30 天的旧备份文件。"""

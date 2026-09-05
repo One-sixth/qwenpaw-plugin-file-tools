@@ -15,7 +15,7 @@ os.chdir(r'D:\Data\github_repo\qwenpaw-plugin-file-tools')
 
 from agentscope.tool._utils import _extract_input_schema
 
-# 全部 26 个工具
+# 全部 27 个工具
 from tools.info import (
     file_tools_listdir, file_tools_info, file_tools_guess, file_tools_diff, file_tools_history,
 )
@@ -27,6 +27,7 @@ from tools.edit import (
     file_tools_delete_lines, file_tools_replace, file_tools_regex_replace,
     file_tools_indent_lines,
 )
+from tools.copy_lines import file_tools_copy_lines
 from tools.safe import (
     file_tools_copy, file_tools_move, file_tools_trash, file_tools_trash_undo, file_tools_mkdir,
 )
@@ -59,6 +60,7 @@ tools = [
     ("历史回滚", [file_tools_undo]),
     ("全量写入", [file_tools_write]),
     ("字节级操作", [file_tools_read_bytes, file_tools_write_bytes, file_tools_find_bytes, file_tools_replace_bytes]),
+    ("跨文件行复制", [file_tools_copy_lines]),
 ]
 
 all_schemas = {}

@@ -1387,5 +1387,102 @@
         "type": "object"
       }
     }
+  },
+  "file_tools_copy_lines": {
+    "type": "function",
+    "function": {
+      "name": "file_tools_copy_lines",
+      "description": "将 src_file 中选中的行复制到 dst_file 指定位置，行内容全程直接落盘编辑、不经过对话上下文。dst_file 不存在时自动新建（连同父目录），已存在时修改前自动备份；dst_file 留空表示复制到源文件自身（自复制，两端行号均以修改前为准）。返回结果摘要与插入点 +/- diff 预览，行号一律 1-based。",
+      "parameters": {
+        "properties": {
+          "src_file": {
+            "description": "源文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "源选中起始行号，1-based，包含。超出源文件总行数时报错。支持整数或十进制数字字符串。"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "源选中结束行号，1-based，包含。必须 >= start_line。超出源文件总行数时取到文件末尾。支持整数或十进制数字字符串。"
+          },
+          "dst_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "目标文件路径。留空（None）= 复制到 src_file 自身。不存在时自动新建（连同父目录），已存在时修改前自动备份。"
+          },
+          "insert_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": -1,
+            "description": "插入到 dst_file 第 insert_line 行之前，1-based；1 = 插入到开头；-1 或不填 = 末尾追加；超过总行数与 -1 同意；目标新建时忽略。支持整数或十进制数字字符串。"
+          },
+          "src_encoding": {
+            "default": "auto",
+            "description": "源文件编码。auto=自动检测（默认），也可指定编码名称。",
+            "type": "string"
+          },
+          "dst_encoding": {
+            "default": "auto",
+            "description": "目标文件编码。auto=已存在时检测自身编码、新建时沿用源文件编码；也可指定编码名称。",
+            "type": "string"
+          },
+          "src_line_separator": {
+            "default": "auto",
+            "description": "源文件拆行方式。auto=先把 \\r\\n/\\r 统一为 \\n 再拆行（默认）；指定 \\n 或 \\r\\n=仅按该行尾拆行，其余换行符保留在行内容中。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          },
+          "dst_line_separator": {
+            "default": "auto",
+            "description": "写回行结束符。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "enum": [
+              "auto",
+              "\\n",
+              "\\r\\n"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "src_file",
+          "start_line",
+          "end_line"
+        ],
+        "type": "object"
+      }
+    }
   }
 }

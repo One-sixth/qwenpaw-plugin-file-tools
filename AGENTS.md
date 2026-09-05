@@ -1,12 +1,12 @@
 # qwenpaw-plugin-file-tools
 
-QwenPaw 文件操作补充插件。注册 26 个 Agent 工具，补充 QwenPaw 缺失的文件操作能力。
+QwenPaw 文件操作补充插件。注册 27 个 Agent 工具，补充 QwenPaw 缺失的文件操作能力。
 
 ## 快速导航
 
 | 文件 | 用途 |
 |------|------|
-| `plugin.py` | 插件入口，注册 26 个工具 |
+| `plugin.py` | 插件入口，注册 27 个工具 |
 | `utils.py` | 公共工具函数（编码检测、路径标准化） |
 | `backup/manager.py` | 历史备份管理 |
 | `tools/info.py` | 信息读取类工具（5 个） |
@@ -16,10 +16,11 @@ QwenPaw 文件操作补充插件。注册 26 个 Agent 工具，补充 QwenPaw �
 | `tools/history.py` | 历史回滚工具（1 个） |
 | `tools/write.py` | 全量写入工具（1 个） |
 | `tools/bytes.py` | 字节级工具（4 个） |
+| `tools/copy_lines.py` | 跨文件行复制工具（1 个，自动备份） |
 | `show_tool_schema.py` | 工具 schema 展示脚本 |
 | `tests/` | 480+ 个 pytest 测试 |
 
-## 26 个工具清单
+## 27 个工具清单
 
 ### 信息读取类（5 个）
 1. `file_tools_listdir` — 列出目录内容（types/extensions/contains/regex/exclude 五类过滤 + follow_symlink 环检测；路径正斜杠、目录带尾斜杠）
@@ -60,3 +61,6 @@ QwenPaw 文件操作补充插件。注册 26 个 Agent 工具，补充 QwenPaw �
 24. `file_tools_write_bytes` — 写入二进制，支持全量/部分覆盖
 25. `file_tools_find_bytes` — 在二进制文件中查找字节序列
 26. `file_tools_replace_bytes` — 在二进制文件中查找并替换字节序列
+
+### 跨文件行复制（1 个，自动备份）
+27. `file_tools_copy_lines` — 源文件选中行复制到目标指定位置（dst 留空=自复制；不存在自动新建含父目录；行内容不经过上下文）

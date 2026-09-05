@@ -49,7 +49,7 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 ## 返回格式（ToolChunk）
 
 ### 标准模式
-全部 26 个工具返回 `ToolChunk` 对象，与 QwenPaw 内置工具一致：
+全部 27 个工具返回 `ToolChunk` 对象，与 QwenPaw 内置工具一致：
 
 ```python
 # 成功
@@ -125,10 +125,10 @@ return make_error("读取", "文件不存在")
 ## 治理系统集成
 
 ### 工具注册参数
-所有 26 个 `register_tool()` 调用指定：
+所有 27 个 `register_tool()` 调用指定：
 ```python
 tool_type="file",      # 声明为文件类工具
-target_param="path",   # 指定 target 参数名
+target_param="path",   # 指定 target 参数名（例外：copy_lines 用 "dst_file"）
 ```
 
 与 QwenPaw 内置工具一致（`Read` 用 `tool_type="file"`, `target_param="file_path"`）。
@@ -222,4 +222,32 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **已修（v1.5.1）**：`format_error` 句尾「。」去重——五轮批评🥉，排查发现全仓 **39 处** reason 自带句号曾拼出"。。"（历史上仅 diff start=0 一处局部补丁没修根），源头归一+钉死；顺修 test_history 存量 `open().read()` 句柄泄漏恢复 -W error 零警告。491 测试全绿；覆盖复查：本轮全部新增代码区域零漏覆。
 
-**未闭环**：①~~v1.5.0 待五轮抽查~~ ✅（五轮 7/10 按设计落地）；②v1.5.1 待 commit+重装（纯文案级）；③盲测周期收官——8→8→8.5→8.5→7（五轮为压力探针卷，分数不可与常规卷直比），file-tools 盲测线可停；④第二个新工具想法未公布（届时走完整流程：方案评审→出卷盲测→对抗审查→发版）；⑤scratch 三目录清理裁决仍挂着；⑥其余 25 工具 path 描述是否推广"绝对路径"句式，留待将来（listdir 已试水）。
+**未闭环**：①~~v1.5.0 待五轮抽查~~ ✅（五轮 7/10 按设计落地）；②~~v1.5.1 待 commit+重装~~ ✅（`7916764`+作者装机）；③盲测周期收官——8→8→8.5→8.5→7（五轮为压力探针卷，分数不可与常规卷直比），file-tools 盲测线可停；④~~第二个新工具想法未公布~~ ✅（copy_lines，见 v1.6.0 节）；⑤scratch 三目录清理裁决仍挂着；⑥其余 25 工具 path 描述是否推广"绝对路径"句式，留待将来（listdir 已试水）。
+
+---
+
+## v1.6.0 file_tools_copy_lines 跨文件行复制（2026-09-05，第二个新工具落地）
+
+**动机**：行内容搬运不经过模型上下文（旧路 read_lines+insert_lines 接力费 token 且转录易飘）。首段 docstring 钩住该直觉。
+
+**作者裁决**（方案评审定稿+当日修订，全落实现+钉测）：start/end_line 编辑家族语法；src_encoding/dst_encoding 双参数；dst 父目录自动创建；不做多段选择；src/dst_line_separator 双参数；insert_line 名+1-based+"1=开头"提示；src_file/dst_file 参数名；**dst_file=None=自复制**；**insert_line 超总行数与 -1 同意自动追加**（十裁决原案"越界从严报错+指引句"被作者当日推翻——越界=追加后空文件特判也随之消失，修订后指引句删除）。
+
+**核心语义**：
+- 自复制：dst=None 或 normcase 路径恒等；两端行号以改前为准，落点可在选中区内部（编辑器粘贴语义，快照无别名）；只备份一次
+- **记账空行不对称（作者裁决）**：源侧选中域排除末尾换行的记账空行（空文件"共 0 行"报错）；目标侧 insert 域含之（3 行带尾换文件有效 1..4，insert_line=4≡追加，5+ 超界钳到追加）
+- 校验序：一切参数/落点校验在备份之前，报错零污染（比家族更严，家族 start_line 超界在备份后才查）
+- 编码继承链：新建/空文件 dst auto→沿用 src 探测编码；已存在 dst auto→检测自身；显式 dst_encoding 即转码
+- strict 拆行（src_line_separator 显式）= 仅按指定序列拆行、其余换行符保留进行内容；写回前 `content.replace("\r\n","\n")`（dst 显式 \n 除外）防 newline 转换叠 `\r\r\n`
+- fresh（目标不存在）忽略 insert_line（0/999/None 皆可），末尾补换行只对真新建执行；空文件目标**无需特判**——读入基线恰为 `[""]`，任意落点插入后 join 自然产出规范换行（当日 insert 修订的红利）
+
+**对抗审查战果（零上下文子 agent，544 绿基线上打穿 4 漏）**：
+- 🔴 M1 strict×auto 写回 `\r\r\n` 字节腐蚀（钉测只钉了对侧 dst="\n"）→ 折叠防御+回归钉
+- 🟠 M2 单空行新建 content 假值跳换行→0 字节+谎报"共 1 行" → 去 `and content`
+- 🟠 M3 空 dst"视为新建"但编码走 chardet 落空 utf-8 与真新建分裂 → 继承 src
+- 🟠 M4 samefile 把"指向 src 的链接"判成自复制但 os.replace 实际掀链接（文案与效果分裂）→ **裁决弃 samefile 纯 normcase 恒等**（规格原文只裁决"实际同路径含大小写"，链接场景交家族路径级行为）；删对侧旧测试
+- 🟡 已处理：m3 fresh 忽略语义入 docstring+钉、m5 文档计数 26→27 全家（README/AGENTS/plugin/MEMORY/show_tool_schema+重新生成 tools_schema.json 27 个）、m6 撤 conftest 死补丁（copy_lines 不 import get_session_dir 无需挂）
+- 🟡 维持现状（家族一致性优先，记录在案）：m1 写回失败留 .temp_file 残件（_write_file 家族通病）、m2 fresh"共 K 行"内容口径 vs 既有"从 M 行"记账口径之差（家族 legacy 口径）、m4 strict 嵌入换行破预览版式（纯观感）
+
+**审查教训**：新工具测试全绿 ≠ 组合空间安全——M1-M4 全活在"钉测组合的对侧"（换 dst 行尾/换 ASCII 内容/换文件系统语义）。**测试矩阵要跨参数维度做笛卡尔抽查**，下次出卷直接带"钉测对侧"清单题。
+
+**发版链**：491→554 测试（新模块 63 个，行覆盖 99% 余双模式导入死弧）→ plugin.json 1.6.0 + CHANGELOG + schema 重导 → 待作者重装+copy_lines 专卷盲测（新工具第六轮=专卷，走完整流程）→ commit 由作者。

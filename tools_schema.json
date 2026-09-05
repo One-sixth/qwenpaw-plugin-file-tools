@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "file_tools_listdir",
-      "description": "列出目录内容，可递归、过滤、排序、分页；路径统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。",
+      "description": "列出目录内容，可递归、过滤、排序、分页；输出路径相对遍历根、统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。",
       "parameters": {
         "properties": {
           "path": {
@@ -20,7 +20,7 @@
               }
             ],
             "default": 1,
-            "description": "递归深度。1=仅当前目录（默认），2=含一层子目录，-1=无限递归。"
+            "description": "往下列几层。1=本层（默认），2=含子目录一层，-1=全部层。"
           },
           "columns": {
             "anyOf": [
@@ -153,7 +153,7 @@
               }
             ],
             "default": null,
-            "description": "排除模式，gitignore 语法，如 [\".git\", \"build/\", \"!keep.log\"]。命中目录整树跳过。"
+            "description": "排除模式，gitignore 语法，按显示路径匹配、不解析符号链接，如 [\".git\", \"build/\", \"!keep.log\"]。命中目录整树跳过。"
           },
           "follow_symlink": {
             "default": true,

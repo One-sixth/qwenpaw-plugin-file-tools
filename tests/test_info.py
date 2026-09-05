@@ -1284,6 +1284,8 @@ class TestEntryWording:
         assert "只影响显示，不影响遍历" in doc     # types 语义
         assert "目录不受影响" in doc               # extensions 目录直通
         assert "整树跳过" in doc                   # exclude 剪枝
+        assert "按显示路径匹配、不解析符号链接" in doc  # C1：exclude 匹配基准（三轮盲测赌点）
+        assert "相对遍历根" in doc                 # C2：输出路径基准（三轮盲测绕圈点）
         assert "<<<警告>>>" in doc                 # 环/断链行内标注预告
         assert "别名" in doc                       # dir/symlink 兼容直觉词
         assert "re.search" in doc                  # regex 语义一词

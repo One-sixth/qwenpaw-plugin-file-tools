@@ -132,11 +132,11 @@ def file_tools_listdir(
     exclude: Optional[Union[str, List[str]]] = None,
     follow_symlink: bool = True,
 ) -> str:
-    """列出目录内容，可递归、过滤、排序、分页；路径统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。
+    """列出目录内容，可递归、过滤、排序、分页；输出路径相对遍历根、统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。
 
     Args:
         path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        recursive: 递归深度。1=仅当前目录（默认），2=含一层子目录，-1=无限递归。
+        recursive: 往下列几层。1=本层（默认），2=含子目录一层，-1=全部层。
         columns: 额外属性列：size、permissions、type、modified_at、created_at、extension。不传则不显示属性列。
         start: 起始条目序号，1-based，默认 1。
         count: 最多返回的条目数，默认 500，范围 1~500。
@@ -146,7 +146,7 @@ def file_tools_listdir(
         extensions: 后缀过滤，如 ["py", "md"]。只作用于文件，目录不受影响（想隐藏目录配 types=["file"]）。
         contains: 显示路径包含某子串即保留（大小写不敏感）。
         regex: 显示路径命中该正则（re.search 语义）即保留。
-        exclude: 排除模式，gitignore 语法，如 [".git", "build/", "!keep.log"]。命中目录整树跳过。
+        exclude: 排除模式，gitignore 语法，按显示路径匹配、不解析符号链接，如 [".git", "build/", "!keep.log"]。命中目录整树跳过。
         follow_symlink: 是否进入符号链接目录，默认 True；环与断链会在输出行内以 <<<警告>>> 标注。
     """
     # ── 参数校验 ──

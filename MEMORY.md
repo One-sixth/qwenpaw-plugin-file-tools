@@ -161,8 +161,8 @@ target_param="path",   # 指定 target 参数名
 - types 只控显示**不影响遍历**；遍历剪枝唯二来源 = exclude 命中目录、环检测
 - extensions：目录一律直通；后缀 = basename 最后点号后段（dotfile 无后缀、多后缀取最后段）
 - contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）；**子串可命中父目录名**（`tools/` 被 `file-tools/` 吞），限定目录用 `/utils/` 边界（顶层够不到）或 `(^|/)utils/` regex 锚定，docstring 已警示（联机回归教训）
-- exclude：v1.4.0 起 **gitignore 语义**（pathspec `from_lines("gitignore", ...)`，模式与路径均 lower、反斜杠转正斜杠）：裸名任意深度命中文件+目录、`dir/` 只命中目录、`/x` 锚根、`!` 豁免后到先中、目录命中=整树剪枝（剪后子项 ! 无法复活，与 git 一致）；注释行/空行自动忽略；非法模式（`!` 半截、`[z-a]`）有 try 守卫 → 中文报错（ValueError+re.error 双捕获）。已知折中：`\`→`/` 预转换使 `\#foo` 转义仅根层可表达；含斜杠旧模式（`*/tests/*`）锚定翻转，任意深度改写 `**/x/**` 或裸名。⚠️ 别用 "gitwildmatch" 工厂名（1.1 起弃用；0.12 里 'gitignore' 反而是弃用名，故下限锁 >=1.1）
-- v1.3.1/1.3.2 文案契约：listdir 分页/越界/start 报错/空目录一律称条目不称「文件」（TestEntryWording+迁移断言钉死）；v1.3.2 起 docstring 首段带输出形态预告（尾注/统计行/上限提示/行内警告）、follow_symlink 带类型判定速查、sort_by 带 Windows size 平局提醒；sort 为稳定排序、平局保持收集次序不承诺可复现；目录 size 列 Windows 恒 0（零上下文盲测批评的落地）
+- exclude：v1.4.0 起 **gitignore 语义**（pathspec `from_lines("gitignore", ...)`，模式与路径均 lower、反斜杠转正斜杠）：裸名任意深度命中文件+目录、`dir/` 只命中目录、`/x` 锚根、`!` 豁免后到先中、目录命中=整树剪枝（剪后子项 ! 无法复活，与 git 一致）；注释行/空行自动忽略；**匹配对象=显示路径、绝不 realpath 解析链接**（三轮盲测钉死，穿透链接的同名内容不受被排目录波及）；非法模式（`!` 半截、`[z-a]`）有 try 守卫 → 中文报错（ValueError+re.error 双捕获）。已知折中：`\`→`/` 预转换使 `\#foo` 转义仅根层可表达；含斜杠旧模式（`*/tests/*`）锚定翻转，任意深度改写 `**/x/**` 或裸名。⚠️ 别用 "gitwildmatch" 工厂名（1.1 起弃用；0.12 里 'gitignore' 反而是弃用名，故下限锁 >=1.1）
+- 文案契约：listdir 分页/越界/start 报错/空目录一律称条目不称「文件」（TestEntryWording+迁移断言钉死）；sort 为稳定排序、平局保持收集次序不承诺可复现；目录 size Windows 恒 0——**均属运行时事实，v1.4.0 极简重写后不再写进 docstring**（禁回流词已锁，别拿旧版本文档当REFERENCE）
 - 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；警告行作为普通条目受全部过滤器管辖、无尾部保底汇报
 - 断链 = symlink 条目 stat 失败；symlink 条目必 stat（普通 file/dir 维持惰性）；根 realpath 有 try 守卫（失败退 resolved，仅失去环检测不崩）
 - 双上限常量放模块级 `_LISTDIR_MAX_MATCH/_LISTDIR_MAX_VISIT`，测试用 monkeypatch 压低复现

@@ -40,6 +40,13 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 - 归一化只发生在 **add 时刻**：v1.2.2 先 add 后建 .gitattributes，才让 20 个 .py 的 CRLF blob 逃过一劫（另 6 个没逃过，已于 v1.2.4 前后归队）
 - 验收：`git ls-files --eol` 全部 `.py` 应为 `i/crlf`
 
+### 运行时行尾策略（2026-09-05 第三裁决确立，v1.6.0 起生效）
+- **Python 文本模式读 `newline=None` 是通用换行翻译（原文件行尾读到即失真）；写 `newline=None` 只认 `os.linesep` 无视文件历史**——"读-改-写"型工具在 Windows 上会把 LF 文件整体转 CRLF，与被编辑内容无关
+- **裁决方向**：`*_line_separator=auto` 语义从"跟 OS"改为"**保持目标文件主行尾**"（`_dominant_newline` 探测：\r\n/\n/\r 多数者、平局 CRLF 优先、无行尾/空/新建落回 OS；复制内容随 join 的 `\n` 换装目标行尾）——copy_lines 已实现（第三裁决）
+- **推广已拍板、排期在后**：先彻底验证 copy_lines（当前阶段），通过后单开 **v1.7.0** 铺其余 24 工具（动 edit.py 等读面=改原始读+探测，影响面大）
+- 写回翻译前须 `content.replace("\r\n","\n")` 折叠（防 strict 拆行带入的 `\r\n` 二次翻译叠成 `\r\r\n`）；目标显式 `\n` 不翻译故豁免
+- 配方与实验事实包：小窝知识库《编程技巧速查》§20
+
 ### 测试配置
 - 保留 `conftest.py` 手动 `sys.path.insert(0, _project_root)`，不加 `pyproject.toml`
 - ⚠️ **pytest 和 `show_tool_schema.py` 都必须用 `qwenpaw` conda 环境**（`D:\Software\miniconda3\envs\qwenpaw\python.exe`）——依赖 agentscope，`normal` 环境没有会全量报错；全量测试现 401 个
@@ -238,6 +245,7 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 - 校验序：一切参数/落点校验在备份之前，报错零污染（比家族更严，家族 start_line 超界在备份后才查）
 - 编码继承链：新建/空文件 dst auto→沿用 src 探测编码；已存在 dst auto→检测自身；显式 dst_encoding 即转码
 - strict 拆行（src_line_separator 显式）= 仅按指定序列拆行、其余换行符保留进行内容；写回前 `content.replace("\r\n","\n")`（dst 显式 \n 除外）防 newline 转换叠 `\r\r\n`
+- **目标行尾保真（作者第三裁决，覆盖第二裁决）**：专卷现场逮到"LF 靶档被 auto 写回整体转 CRLF"后实验钉死机制——**Python 文本模式读 newline=None 是通用换行翻译（原文件行尾读到即失真）、写 newline=None 只认 os.linesep 完全无视文件历史**，家族 read+重写必然 Windows LF→CRLF。裁决：`dst_line_separator=auto`+目标有内容 → 先 raw 读探测**目标文件主行尾**（`_detect_file_newline`/`_dominant_newline`，多数者、平局 CRLF 优先、探测失败按无行尾）并跟随写回，复制内容同步换装；自复制目标即源（跟随 src_sep，含显式参数值）；新建/空/无换行落回 OS。**家族推广已拍板**：作者裁决"保持目标主行尾"**推广到其余 24 工具**，但排期在当前工具完全验证通过之后（潜在 v1.7.0，动 edit.py 等读面=原始读+探测，影响面大单开版本；知识库《编程技巧速查》§20 已备配方）
 - fresh（目标不存在）忽略 insert_line（0/999/None 皆可），末尾补换行只对真新建执行；空文件目标**无需特判**——读入基线恰为 `[""]`，任意落点插入后 join 自然产出规范换行（当日 insert 修订的红利）
 
 **对抗审查战果（零上下文子 agent，544 绿基线上打穿 4 漏）**：
@@ -250,4 +258,6 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **审查教训**：新工具测试全绿 ≠ 组合空间安全——M1-M4 全活在"钉测组合的对侧"（换 dst 行尾/换 ASCII 内容/换文件系统语义）。**测试矩阵要跨参数维度做笛卡尔抽查**，下次出卷直接带"钉测对侧"清单题。
 
-**发版链**：491→554 测试（新模块 63 个，行覆盖 99% 余双模式导入死弧）→ plugin.json 1.6.0 + CHANGELOG + schema 重导 → 待作者重装+copy_lines 专卷盲测（新工具第六轮=专卷，走完整流程）→ commit 由作者。
+**发版链**：491→554 测试（新模块 63 个，行覆盖 99% 余双模式导入死弧）→ plugin.json 1.6.0 + CHANGELOG + schema 重导 → 重装 1.6.0 → **copy_lines 专卷盲测（第六轮，新工具首卷）**：6/6 全过、零意外失败、自评 8/10（首卷即达 listdir 常规卷分段 8~8.5）。考点全中：收口句六处逐字引用（"**超过总行数与 -1 同意**"直接支撑超界题、当日修订即被新人引用实证；"dst_file 留空=自复制，两端行号均以修改前为准"支撑省略参数下注）；新人自创「借 +/- 预览当只读通道」侦查法（工具无读面时的运行时自解释红利）；M2/M3 修复被实战点名通过（复制空行不被吞、探测新建文件 GBK 编码自动沿用）。**批评处置**：☠幻影空行计入"从X行变为Y行"口径（真实，家族 legacy，src"共0行"与 dst"共N+1"双标被点破）→**作者终裁维持**（"末尾有换行，那也是换行"——dst 落点域含幻影行是有意设计，与 src 选中域排除之构成不对称裁决一体两面）；☠"请调用 file_tools_undo"对无 undo 环境画饼→考卷侧裁剪产物（真机 undo 同插件恒可用），不修；⚠"留空"三义（省略/null/""）——""会报"不是文件"可自解释，不修；⚠三参数越界行为不对称=作者已裁决设计，新人靠逐字句用对，不修；⚠预览空行无视觉重量=家族版式，记录。**审查盲区发现→第二裁决落地**：复盘字节时逮到"LF 文件被 auto 写回整体转 CRLF"（新人无读工具看不见）；作者裁决**自复制**双 auto 复用源真实设定（编码本已如此，行尾新增 `_dominant_newline` 主行尾跟随，显式参数则跟参数、无换行落回 OS）；**跨文件仍家族 OS 口径**，残余悬案②（入已知限制 or 推广家族"auto=保持目标主行尾"）待终裁。→ **第三裁决落地（目标行尾保真，见上）**，悬案②在 copy_lines 范围内定案、家族推广=已拍板排后；复测 564 全绿（行尾保真 10 连钉含探测失败兜底）覆盖 99%。→ commit 由作者（建议 msg：`v1.6.0: add file_tools_copy_lines`；工作区当前含 8a18443 之后的第二+第三裁决修正增量）。
+
+**新会话续接口令（当前阶段）**：读项目 MEMORY「v1.6.0 file_tools_copy_lines」节。待办顺序：① 作者再装 1.6.0 修正版（第二+三裁决未装机）→ 联机冒烟：LF 文件自复制/跨文件保持 LF、新建仍 OS 口径、超界 insert 追加；② **彻底验证当前工具**（作者原话"先确保当前工具逻辑完全通过"——候选：第七轮 copy_lines 复核卷，题源=钉测对侧清单+§20 三事实场景，含 mixed 行尾目标、CR 老麦文件、探测失败兜底等已钉未联机项）；③ 通过后 commit；④ 再开 v1.7.0 家族推广（auto=保持目标主行尾 铺其余 24 工具，动读面）；⑤ scratch 四目录清理裁决仍挂（cycle_proto/review_scratch/live_symlink_test/copy_lines_exam 靶场）。

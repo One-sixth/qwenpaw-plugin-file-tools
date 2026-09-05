@@ -18,6 +18,7 @@ try:
         format_backup_info,
         make_error,
         make_success,
+        normalize_newlines,
         parse_int,
         read_file_lines,
         resolve_path,
@@ -31,6 +32,7 @@ except ImportError:
         format_backup_info,
         make_error,
         make_success,
+        normalize_newlines,
         parse_int,
         read_file_lines,
         resolve_path,
@@ -48,6 +50,23 @@ _DST_NEWLINE_MAP = {"auto": None, "\\n": "\n", "\\r\\n": "\r\n"}
 _PREVIEW_MAX_LINES = 20
 
 
+def _dominant_newline(content: str) -> Optional[str]:
+    """探测文本的主要行尾（作者裁决：自复制 auto = 跟随源文件真实行尾）。
+
+    取 \\r\\n / \\n / \\r 中数量最多者，平局 CRLF 优先（Windows 文件部分
+    转换的常见形态）；完全没有换行时返回 None（落回 OS 口径）。
+    """
+    crlf = content.count("\r\n")
+    lf = content.count("\n") - crlf
+    cr = content.count("\r") - crlf
+    best = max(crlf, lf, cr)
+    if best == 0:
+        return None
+    if crlf >= lf and crlf >= cr:
+        return "\r\n"
+    return "\n" if lf >= cr else "\r"
+
+
 def _split_source_lines(
     path: str,
     encoding: str,
@@ -55,23 +74,35 @@ def _split_source_lines(
 ):
     """读取源文件并拆行。
 
-    auto: 文本模式通用换行（\\r\\n/\\r 归一为 \\n）后按行拆。
-    显式 \\n 或 \\r\\n: 原始读取、仅按该行尾序列拆行，其余换行符保留在行内容中。
+    auto: 原始读取、探测主行尾后归一为 \\n 拆行。
+    显式 \\n 或 \\r\\n: 仅按该行尾序列拆行，其余换行符保留在行内容中。
     非法值宽容退回 auto。
 
     Returns:
-        (lines, resolved_encoding)
+        (lines, resolved_encoding, dominant_sep)
+        dominant_sep: 显式模式=该序列；auto 模式=文件真实主行尾（无换行为 None）
     """
     resolved_encoding = detect_encoding(path, encoding)
+    with open(path, "r", encoding=resolved_encoding, newline="") as f:
+        content = f.read()
+
     sep = _SRC_SEP_MAP.get(line_separator)
     if sep is not None:
-        with open(path, "r", encoding=resolved_encoding, newline="") as f:
-            content = f.read()
-        return content.split(sep), resolved_encoding
+        return content.split(sep), resolved_encoding, sep
+    return (
+        normalize_newlines(content).split("\n"),
+        resolved_encoding,
+        _dominant_newline(content),
+    )
 
-    with open(path, "r", encoding=resolved_encoding) as f:
-        content = f.read()
-    return content.split("\n"), resolved_encoding
+
+def _detect_file_newline(path: str, encoding: str) -> Optional[str]:
+    """探测已存在文件（非自复制基线）的真实主行尾；探测失败按无行尾处理。"""
+    try:
+        with open(path, "r", encoding=encoding, newline="") as f:
+            return _dominant_newline(f.read())
+    except Exception:
+        return None
 
 
 def _same_file(path_a: str, path_b: str) -> bool:
@@ -141,7 +172,7 @@ def file_tools_copy_lines(
         src_encoding: 源文件编码。auto=自动检测（默认），也可指定编码名称。
         dst_encoding: 目标文件编码。auto=已存在时检测自身编码、新建时沿用源文件编码；也可指定编码名称。
         src_line_separator: 源文件拆行方式。auto=先把 \\r\\n/\\r 统一为 \\n 再拆行（默认）；指定 \\n 或 \\r\\n=仅按该行尾拆行，其余换行符保留在行内容中。
-        dst_line_separator: 写回行结束符。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        dst_line_separator: 写回行结束符。auto=（默认）保持目标文件主行尾（自复制即源文件；新建/空/无换行文件按操作系统），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
     """
     # ── 参数解析 ──
     start_line, err = parse_int(start_line, "start_line")
@@ -167,7 +198,7 @@ def file_tools_copy_lines(
 
     # ── 读源文件、截取选中块 ──
     try:
-        src_lines, src_enc = _split_source_lines(
+        src_lines, src_enc, src_sep = _split_source_lines(
             src_resolved, src_encoding, src_line_separator
         )
     except Exception as e:
@@ -256,8 +287,14 @@ def file_tools_copy_lines(
         content += "\n"  # 新建文件补末尾换行，成为规范文本文件（单空行也算）
 
     nl = _DST_NEWLINE_MAP.get(dst_line_separator, None)
+    if dst_line_separator == "auto" and dst_exists and not empty_dst:
+        # 作者裁决：auto = 保持目标文件主行尾（自复制时目标即源文件）；
+        # 新建/空文件/无换行文件落回 OS 口径
+        follow = src_sep if self_copy else _detect_file_newline(dst_resolved, dst_enc)
+        if follow:
+            nl = follow
     if nl != "\n":
-        # strict 拆行可带入 \r\n 行内容；写回转换（\n→\r\n）前先折叠，
+        # strict 拆行可带入 \r\n 行内容；写回转换（\n→行尾）前先折叠，
         # 杜绝 \r\r\n 字节腐蚀。dst 显式 \n 不转换，字节原样保留。
         content = content.replace("\r\n", "\n")
     try:

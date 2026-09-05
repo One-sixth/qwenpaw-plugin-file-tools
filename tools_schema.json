@@ -1467,7 +1467,7 @@
           },
           "dst_line_separator": {
             "default": "auto",
-            "description": "写回行结束符。auto=按操作系统自动处理（默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
+            "description": "写回行结束符。auto=（默认）保持目标文件主行尾（自复制即源文件；新建/空/无换行文件按操作系统），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。",
             "enum": [
               "auto",
               "\\n",

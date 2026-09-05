@@ -235,6 +235,26 @@ class TestIoErrors:
         text = _text(result)
         assert "失败" in text and "写入目标文件" in text
 
+    def test_newline_detect_failure_falls_back_to_os(self, tmp_dir, monkeypatch):
+        """目标主行尾探测失败 → 按无行尾处理落回 OS，操作照常不陪绑。"""
+        real = copy_lines_mod._dominant_newline
+
+        def selective(content):
+            if "B1" in content:  # 只在探测 dst（B1 基线）时炸
+                raise OSError("stub")
+            return real(content)
+
+        monkeypatch.setattr(copy_lines_mod, "_dominant_newline", selective)
+        try:
+            src = _make(os.path.join(tmp_dir, "s.txt"), "A1\n")
+            dst = _make(os.path.join(tmp_dir, "d.txt"), "B1\n", newline="")
+            r = file_tools_copy_lines(src, 1, 1, dst)
+        finally:
+            monkeypatch.undo()
+        assert "失败" not in _text(r)
+        expect = b"B1\r\nA1\r\n" if os.name == "nt" else b"B1\nA1\n"
+        assert _read_bytes(dst) == expect
+
 
 class TestAdversarialFixes:
     """零上下文对抗审查抓漏（M1-M4/m3）的回归钉。"""
@@ -355,6 +375,64 @@ class TestSelfCopy:
         assert list_history(src_file) == []
 
 
+class TestSelfCopyNewlinePreserve:
+    """第三裁决：dst auto = 保持目标文件主行尾（自复制目标即源文件）。"""
+
+    def test_self_lf_stays_lf(self, tmp_dir):
+        src = _make(os.path.join(tmp_dir, "l.txt"), "A1\nA2\nA3\n", newline="")
+        file_tools_copy_lines(src, 1, 1)
+        assert _read_bytes(src) == b"A1\nA2\nA3\nA1\n"
+
+    def test_self_crlf_stays_crlf(self, tmp_dir):
+        src = _make(os.path.join(tmp_dir, "c.txt"), "A1\r\nA2\r\n", newline="")
+        file_tools_copy_lines(src, 1, 1)
+        assert _read_bytes(src) == b"A1\r\nA2\r\nA1\r\n"
+
+    def test_self_cr_only_preserved(self, tmp_dir):
+        src = _make(os.path.join(tmp_dir, "r.txt"), "A1\rA2\r", newline="")
+        file_tools_copy_lines(src, 1, 1)
+        assert _read_bytes(src) == b"A1\rA2\rA1\r"
+
+    def test_self_mixed_dominant_crlf(self, tmp_dir):
+        """混合行尾按主行尾归一（CRLF 2 : LF 1）。"""
+        src = _make(os.path.join(tmp_dir, "m.txt"),
+                    "A1\r\nA2\nA3\r\n", newline="")
+        file_tools_copy_lines(src, 1, 1)
+        assert _read_bytes(src) == b"A1\r\nA2\r\nA3\r\nA1\r\n"
+
+    def test_self_no_newline_src_falls_os(self, tmp_dir):
+        src = _make(os.path.join(tmp_dir, "s.txt"), "ONLY", newline="")
+        file_tools_copy_lines(src, 1, 1)
+        assert _read_lines(src) == ["ONLY", "ONLY"]  # 无行尾可跟，落回 OS
+
+    def test_self_explicit_src_sep_followed(self, tmp_dir):
+        """显式 src_line_separator 时，自复制 auto 跟随该参数值。"""
+        src = _make(os.path.join(tmp_dir, "c.txt"), "A1\r\nA2\r\n", newline="")
+        file_tools_copy_lines(src, 1, 1, src_line_separator="\\r\\n")
+        assert _read_bytes(src) == b"A1\r\nA2\r\nA1\r\n"
+
+    def test_cross_file_auto_keeps_dst_lf(self, tmp_dir):
+        """第三裁决：跨文件 dst auto + 有内容 = 保持目标文件主行尾，LF 不再被转 CRLF。"""
+        src = _make(os.path.join(tmp_dir, "s.txt"), "A1\n")
+        dst = _make(os.path.join(tmp_dir, "d.txt"), "B1\n", newline="")
+        file_tools_copy_lines(src, 1, 1, dst)
+        assert _read_bytes(dst) == b"B1\nA1\n"
+
+    def test_cross_file_auto_keeps_dst_crlf(self, tmp_dir):
+        src = _make(os.path.join(tmp_dir, "s.txt"), "A1\n")
+        dst = _make(os.path.join(tmp_dir, "d.txt"), "B1\r\n", newline="")
+        file_tools_copy_lines(src, 1, 1, dst)
+        assert _read_bytes(dst) == b"B1\r\nA1\r\n"
+
+    def test_new_dst_auto_still_os(self, tmp_dir):
+        """无内容可保持（新建）→ 仍 OS 口径，本裁决唯一的换行改写面。"""
+        src = _make(os.path.join(tmp_dir, "s.txt"), "A1\nA2\n")
+        dst = os.path.join(tmp_dir, "brand_new.txt")
+        file_tools_copy_lines(src, 1, 2, dst)
+        expect = b"A1\r\nA2\r\n" if os.name == "nt" else b"A1\nA2\n"
+        assert _read_bytes(dst) == expect
+
+
 class TestEncoding:
     GBK_TEXT = "中文第一行\n中文第二行\n中文第三行\n"
 
@@ -470,6 +548,7 @@ class TestDocstringContract:
         "仅按该行尾拆行",
         "超过总行数与 -1 同意",
         "目标新建时忽略",
+        "保持目标文件主行尾",
     ]
 
     def test_must_keep_phrases(self):

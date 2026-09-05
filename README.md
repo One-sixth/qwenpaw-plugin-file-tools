@@ -2,6 +2,8 @@
 
 **补充 QwenPaw 缺失的文件操作能力：安全文件操作、行级编辑、文件信息、文本搜索、批量处理、历史回滚、回收站操作、字节级操作。**
 
+Github仓库：https://github.com/One-sixth/qwenpaw-plugin-file-tools
+
 ## 功能概览（27 个工具）
 
 ### 信息读取类

@@ -30,7 +30,7 @@
 | `file_tools_replace` | 查找替换（子串匹配，支持 dry_run） |
 | `file_tools_regex_replace` | 正则替换（支持跨行，支持 dry_run） |
 | `file_tools_indent_lines` | 调整行首缩进（expand/shrink），可以轻松调整代码段的缩进 |
-| `file_tools_copy_lines` | 跨文件/自复制行区间到指定位置（内容不经过上下文，新建补父目录） |
+| `file_tools_copy_lines` | 跨文件/自复制行区间到指定落点（每个拆行元素皆真实行、末尾空行可拷；内容不经过上下文，新建连父目录） |
 | `file_tools_write` | 全量写入文件（原子写入，自动备份） |
 
 ### 安全文件操作类
@@ -78,6 +78,12 @@ qwenpaw app
 | `chardet` | 文本编码自动检测 |
 
 > `puremagic` 版本要求 `>=1.20`：2.x 系列要求 Python ≥3.12，云端 QwenPaw（Python 3.11）环境需装 1.x 系列。本插件仅使用 `magic_file()`，1.x/2.x 该 API 一致，检测失败时自动降级。
+
+## 行尾与编码
+
+- 读改写工具内部统一按 `\n` 处理行，写回行尾跟随 `line_separator` 参数：`auto`（默认）= **保持目标文件主行尾**（`\r\n`/`\n`/`\r` 取多数者；空/无行尾/新建文件落回平台行尾），`\n`/`\r\n` = 强制指定。编辑文件不会再"顺带整文件换行尾"。
+- 例外：`file_tools_append` 的 `auto` = 平台行尾（只做增量追加，不重排已有字节）。
+- 编码：修改类 `encoding=auto` 自动检测（chardet）；`file_tools_copy_lines` 的新建/空目标自动沿用源文件编码。
 
 ## 路径规范
 

@@ -152,7 +152,7 @@ target_param="path",   # 指定 target 参数名
 
 ---
 
-## v1.3.0 listdir 过滤改造（2026-09-05，未 commit）
+## v1.3.0 listdir 过滤改造（2026-09-05，已 commit）
 
 **特性总览**：新增 6 参数 `types`/`extensions`/`contains`/`regex`/`exclude`/`follow_symlink`；输出全正斜杠+目录尾斜杠；realpath 祖先链防环 + 断链警告；双上限（匹配 10000 / 检查 100000）；过滤统计 footer；482 测试，listdir 区域行覆盖 100% + 分支仅余结构不可达死弧。
 
@@ -182,4 +182,21 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
 
-**未闭环**：①✅2026-09-05联机复验通过（字符串化extensions/columns生效，环/断链/合法复用全对，v1.3.0已提交）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用）。
+**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④v1.4.0 收口句（三轮 C1/C2/C4 修补）待 commit+重装定稿。
+
+---
+
+## v1.4.0 文档极简重写 + absolute 移除 + gitignore 引擎（2026-09-05，三轮盲测驱动）
+
+**一日四连版本链**：v1.3.1（条目化文案）→ v1.3.2（输出预告，后被极简掉）→ v1.3.3（幽灵版，并入 1.4.0）→ v1.4.0（定稿候选）。
+
+**文档哲学转向（泰斗先生拍板，最重要决策）**：极简直觉化——agent 自带 ls/glob/gitignore 世界知识，docstring 每参数一句级、示例形态代替文字规则、边界由运行时输出（行内警告/统计行/中文报错）自解释。listdir 文档 2340→622 字符（-73%）。**三轮零上下文盲测实证成功**：8/10→8/10→8.5/10，最终 6/6 一次通过零试错，gitignore 直觉题（排树留同名文件）新人凭题目外的世界经验自创正解。方法论全文见小窝知识库《Agent工具文档设计与盲测验证》。
+
+**防退化三钉**：
+1. `test_docstring_minimal_contract`：8 必留词 + 7 禁回流词（所见即所搜/先校验/祖先链等注意事项类禁止再堆回 docstring）
+2. `TestEntryWording`：条目化运行时文案精确断言
+3. **换引擎 checklist**：同函数兄弟过滤器有的 try 守卫必须对称平移（F1 教训：exclude 换 pathspec 漏守卫，半截 `!` 英文 traceback 炸穿中文报错面，审查逮 MAJOR）
+
+**盲测换来的最终两句 docstring 事实**（v1.4.0 收口）：exclude「按显示路径匹配、不解析符号链接」+ 首段「输出路径相对遍历根」——凡新人自曝"在赌"的语义空白都值得一句钉死。C3（警告串塞 name 列机器使用要剥尾）维持 v1.3.0 行内警告裁决不改，仅记录。
+
+**依赖**：`pathspec>=1.1`（工厂名 `'gitignore'` 版本翻转坑，速查 §17）；qwenpaw/normal 环境均已自带。

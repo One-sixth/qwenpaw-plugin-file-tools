@@ -176,7 +176,7 @@ class TestListdir:
         open(os.path.join(tmp_dir, "aaa_file.txt"), "w").close()
         result = file_tools_listdir(tmp_dir, sort_by="type", ascending=True)
         lines = result.content[0].text.strip().split("\n")
-        # "directory" < "file"（字典序）
+        # "dir" < "file"（字典序）
         assert lines[0] == "zzz_dir/"
         assert lines[1] == "aaa_file.txt"
         # descending
@@ -300,21 +300,25 @@ class TestListdirFilters:
         assert "dir_a/" in lines and "dir_b/" in lines
         assert "file_a.txt" not in lines
 
-    def test_types_case_insensitive_and_full_word(self, subdir_structure):
+    def test_types_case_insensitive_and_alias_retired(self, subdir_structure):
         lines = file_tools_listdir(subdir_structure, recursive=1,
-                                   types=["DIRECTORY", "File"]).content[0].text.splitlines()
+                                   types=["DIR", "File"]).content[0].text.splitlines()
         assert "dir_a/" in lines and "file_a.txt" in lines
         assert ".hidden" in lines          # 无后缀文件，type=file 照样命中
-        lines2 = file_tools_listdir(subdir_structure, recursive=1,
-                                    types=["directory"]).content[0].text.splitlines()
-        assert ".hidden" not in lines2     # 文件被目录过滤器排除
+        r = file_tools_listdir(subdir_structure, recursive=1,
+                               types=["directory"])          # directory 别名制度已废除
+        assert "不合法" in r.content[0].text
 
-    def test_types_all_and_empty_are_noop(self, tmp_dir):
+    def test_types_empty_noop_all_retired(self, tmp_dir):
         open(os.path.join(tmp_dir, "a.txt"), "w").close()
         os.makedirs(os.path.join(tmp_dir, "sub"))
         base = file_tools_listdir(tmp_dir).content[0].text
-        assert file_tools_listdir(tmp_dir, types=["all"]).content[0].text == base
         assert file_tools_listdir(tmp_dir, types=[]).content[0].text == base
+        assert file_tools_listdir(tmp_dir, types=[""]).content[0].text == base
+        # all 与旧别名（directory/link）全部退役：一律非法
+        for retired in ("all", "directory", "link"):
+            r = file_tools_listdir(tmp_dir, types=[retired]).content[0].text
+            assert "不合法" in r, retired
 
     def test_types_invalid_value_error(self, tmp_dir):
         r = file_tools_listdir(tmp_dir, types=["folder"])
@@ -491,17 +495,16 @@ class TestListdirFilters:
     def test_symlink_dir_followed_by_default(self, tmp_dir):
         _build_cycle_tree(tmp_dir)
         lines = file_tools_listdir(tmp_dir, recursive=-1).content[0].text.splitlines()
-        assert "x/one/" in lines                    # 链接目录按 directory 展开
+        assert "x/one/" in lines                    # 活目录链恒带杠并展开
         assert "x/one/sx.txt" in lines
 
     @requires_symlink
-    def test_symlink_dir_not_followed_leaf(self, tmp_dir):
+    def test_symlink_dir_not_followed_keeps_slash(self, tmp_dir):
         _build_cycle_tree(tmp_dir)
         lines = file_tools_listdir(tmp_dir, recursive=-1,
                                    follow_symlink=False).content[0].text.splitlines()
-        assert "x/one" in lines                     # symlink 叶子，无尾斜杠
-        assert "x/one/" not in lines
-        assert "x/one/sx.txt" not in lines          # 不进入
+        assert "x/one/" in lines                    # 材质是活目录链 → 恒带杠
+        assert "x/one/sx.txt" not in lines          # 但不进入
 
     @requires_symlink
     def test_symlink_file_labelled_symlink(self, tmp_dir):
@@ -512,11 +515,29 @@ class TestListdirFilters:
         assert "t.txt" not in lines
 
     @requires_symlink
+    def test_types_segment_match(self, tmp_dir):
+        """v1.5.0 分段匹配：dir 含活目录链，symlink 一网打尽，file 不含链接目录。"""
+        _build_cycle_tree(tmp_dir)
+        text = file_tools_listdir(tmp_dir, recursive=-1,
+                                  types=["dir"]).content[0].text
+        assert "x/one/" in text and "shared/" in text   # symlink|dir 命中 dir 分段
+        assert "top.txt" not in text                    # 文件排除
+        text2 = file_tools_listdir(tmp_dir, recursive=-1,
+                                   types=["symlink"]).content[0].text.splitlines()
+        assert "x/one/" in text2                                  # 活目录链也是 symlink
+        assert any(l.startswith("a/b/c/loop/") for l in text2)    # 环行带警告后缀
+        assert "shared/" not in text2                             # 真实目录不是链接
+        text3 = file_tools_listdir(tmp_dir, recursive=-1,
+                                   types=["file"]).content[0].text.splitlines()
+        assert "x/one/" not in text3 and "shared/" not in text3  # 目录条目按整行排除
+        assert "x/one/sx.txt" in text3                           # 遍历不受显示过滤影响
+
+    @requires_symlink
     def test_cycle_warning_row_inline(self, tmp_dir):
         _build_cycle_tree(tmp_dir)
         text = file_tools_listdir(tmp_dir, recursive=-1).content[0].text
         assert text.count("<<<警告") == 1
-        assert "a/b/c/loop/ <<<警告，发现symlink环嵌套，跳过该文件夹展开>>>" in text
+        assert "a/b/c/loop/ <<<警告，发现循环符号链接，跳过该文件夹展开>>>" in text
         assert "a/b/c/loop/fa.txt" not in text      # 环未展开
 
     @requires_symlink
@@ -547,7 +568,7 @@ class TestListdirFilters:
         text = file_tools_listdir(tmp_dir, recursive=-1,
                                   follow_symlink=False).content[0].text
         assert "<<<警告" not in text                # 不进入链接 → 不可能成环
-        assert "a/b/c/loop" in text                 # 以 symlink 叶子身份列出
+        assert "a/b/c/loop" in text                 # 活目录链带杠列出，未跟进不展开
 
 
 class TestListdirCapsAndFixes:
@@ -614,13 +635,12 @@ class TestListdirCapsAndFixes:
             r = file_tools_listdir(tmp_dir, extensions=[token]).content[0].text
             assert r == base, token
 
-    # ── Bug5：link 别名承诺化 ──
+    # ── Bug5 反转：link 别名退役 ──
 
-    def test_types_link_alias_valid(self, tmp_dir):
+    def test_types_link_alias_retired(self, tmp_dir):
         _make_files(tmp_dir, ["a.txt"])
         r = file_tools_listdir(tmp_dir, types=["link"]).content[0].text
-        assert "不合法" not in r
-        assert "无匹配条目" in r          # 普通目录无 symlink，走过滤而非报错
+        assert "不合法" in r              # v1.5.0 起词表严格：file、dir、symlink
 
     # ── 尾斜杠排序顺序固化 ──
 
@@ -630,7 +650,7 @@ class TestListdirCapsAndFixes:
         # '.'(0x2E) < '/'(0x2F)：同前缀文件排在目录前
         assert lines == ["a_dir.txt", "a_dir/"]
 
-    # ── Bug3 裁决：断链符号链接可见（type=symlink、元数据空） ──
+    # ── Bug3 裁决：断链符号链接可见（type=symlink|invalid、元数据空） ──
 
     @requires_symlink
     def test_broken_symlink_is_listed(self, tmp_dir):
@@ -646,9 +666,9 @@ class TestListdirCapsAndFixes:
         # follow=False 同样判断（可达性与遍历策略无关）
         text2 = file_tools_listdir(tmp_dir, follow_symlink=False).content[0].text
         assert "dangling <<<警告，符号链接目标不可达>>>" in text2
-        # columns 下不崩溃：size 为 0、type 照常 symlink
+        # columns 下不崩溃：size 为 0、type 报材质+目标 symlink|invalid
         text3 = file_tools_listdir(tmp_dir, columns=["size", "type"]).content[0].text
-        assert "| 0 | symlink |" in text3
+        assert "| 0 | symlink|invalid |" in text3
 
     @requires_symlink
     def test_broken_suffix_not_in_matching(self, tmp_dir):
@@ -677,7 +697,7 @@ class TestListdirCapsAndFixes:
         warn_lines = [l for l in text.splitlines() if "警告" in l]
         assert len(warn_lines) == 1
         assert warn_lines[0].startswith("| a/b/c/loop/ <<<警告")
-        assert "| directory |" in warn_lines[0]      # 仅 name 列带警告
+        assert "| symlink|dir |" in warn_lines[0]     # 仅 name 列带警告，type 报材质+目标
 
     @requires_symlink
     def test_no_cycle_warning_when_depth_insufficient(self, tmp_dir):
@@ -949,14 +969,14 @@ class TestListdirEdgeCorners:
         text = file_tools_listdir(tmp_dir, extensions=["py"]).content[0].text
         assert "lnk.py" in text and "big.bin" not in text   # 后缀按链接名
         text2 = file_tools_listdir(tmp_dir, columns=["size", "type"]).content[0].text
-        assert "| 100 | symlink |" in text2                 # 元数据随目标
+        assert "| 100 | symlink|file |" in text2              # 元数据随目标，材质+目标复合类型
 
     @requires_symlink
     def test_self_loop_pointing_to_scan_root(self, tmp_dir):
         os.symlink(tmp_dir, os.path.join(tmp_dir, "me"), target_is_directory=True)
         _make_files(tmp_dir, ["in.txt"])
         text = file_tools_listdir(tmp_dir, recursive=-1).content[0].text
-        assert "me/ <<<警告，发现symlink环嵌套" in text       # 指向遍历根本身也算环
+        assert "me/ <<<警告，发现循环符号链接" in text         # 指向遍历根本身也算环
         assert text.count("<<<警告") == 1
         assert "me/me" not in text and "me/in.txt" not in text
 
@@ -1278,19 +1298,20 @@ class TestEntryWording:
         assert "| d/ | 0 |" in text            # size 语义写进文档后，行为同步钉死
 
     def test_docstring_minimal_contract(self):
-        """v1.3.3 极简文档契约：只留直觉级说明，注意事项禁止回流。"""
+        """v1.5.0 极简文档契约：只留直觉级说明，注意事项与退役制度禁止回流。"""
         doc = file_tools_listdir.__doc__
-        # 六个一词级保留点（实战价值浓缩）
-        assert "只影响显示，不影响遍历" in doc     # types 语义
-        assert "目录不受影响" in doc               # extensions 目录直通
-        assert "整树跳过" in doc                   # exclude 剪枝
+        # 八个一词级保留点（实战价值浓缩）
+        assert "命中类型任一分段" in doc             # v1.5.0 types 分段匹配语义
+        assert "绝对路径" in doc                     # v1.5.0 E4：四轮盲测"硬着头皮试"点
+        assert "目录不受影响" in doc                 # extensions 目录直通
+        assert "整树跳过" in doc                     # exclude 剪枝
         assert "按显示路径匹配、不解析符号链接" in doc  # C1：exclude 匹配基准（三轮盲测赌点）
-        assert "相对遍历根" in doc                 # C2：输出路径基准（三轮盲测绕圈点）
-        assert "<<<警告>>>" in doc                 # 环/断链行内标注预告
-        assert "别名" in doc                       # dir/symlink 兼容直觉词
-        assert "re.search" in doc                  # regex 语义一词
-        # 裹脚布不得回流（v1.3.0~1.3.2 堆过的注意事项类）
+        assert "相对遍历根" in doc                   # C2：输出路径基准（三轮盲测绕圈点）
+        assert "<<<警告>>>" in doc                   # 环/断链行内标注预告
+        assert "re.search" in doc                    # regex 语义一词
+        # 裹脚布注意事项与已退役制度不得回流（v1.3.x 堆过 / v1.5.0 废除）
         for banned in ("所见即所搜", "先校验", "祖先链", "稳定排序",
-                       "类型判定速查", "恒为 0", "输出末尾可能依次出现"):
+                       "类型判定速查", "恒为 0", "输出末尾可能依次出现",
+                       "别名", "all=不过滤", "只影响显示", "invalid"):
             assert banned not in doc, banned
 

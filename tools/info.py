@@ -59,16 +59,9 @@ logger = logging.getLogger(__name__)
 # ── 1. file_tools_listdir ─────────────────────────────────
 
 
-_LISTDIR_TYPE_ALIAS = {
-    "file": "file",
-    "dir": "directory",
-    "directory": "directory",
-    "symlink": "symlink",
-    "link": "symlink",
-    "all": "all",
-}
+_LISTDIR_TYPE_TOKENS = {"file", "dir", "symlink"}
 
-_CYCLE_WARN_SUFFIX = " <<<警告，发现symlink环嵌套，跳过该文件夹展开>>>"
+_CYCLE_WARN_SUFFIX = " <<<警告，发现循环符号链接，跳过该文件夹展开>>>"
 _BROKEN_SYMLINK_SUFFIX = " <<<警告，符号链接目标不可达>>>"
 
 _LISTDIR_MAX_MATCH = 10000
@@ -135,14 +128,14 @@ def file_tools_listdir(
     """列出目录内容，可递归、过滤、排序、分页；输出路径相对遍历根、统一正斜杠、目录带尾斜杠。过滤器之间 AND、列表内 OR。
 
     Args:
-        path: 目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        path: 目录路径。支持相对路径（相对于 workspace 目录）和绝对路径，支持 ~ 展开。
         recursive: 往下列几层。1=本层（默认），2=含子目录一层，-1=全部层。
         columns: 额外属性列：size、permissions、type、modified_at、created_at、extension。不传则不显示属性列。
         start: 起始条目序号，1-based，默认 1。
         count: 最多返回的条目数，默认 500，范围 1~500。
         sort_by: 排序字段：name（默认）、size、permissions、type、modified_at、created_at、extension。
         ascending: True 升序（默认）、False 降序。
-        types: 按类型过滤：file、dir（别名 directory）、symlink（别名 link）、all=不过滤。只影响显示，不影响遍历。
+        types: 按类型过滤，命中类型任一分段即可：file、dir、symlink。
         extensions: 后缀过滤，如 ["py", "md"]。只作用于文件，目录不受影响（想隐藏目录配 types=["file"]）。
         contains: 显示路径包含某子串即保留（大小写不敏感）。
         regex: 显示路径命中该正则（re.search 语义）即保留。
@@ -198,16 +191,14 @@ def file_tools_listdir(
         norm_types = []
         for t in types_list:
             key = t.strip().lower()
-            alias = _LISTDIR_TYPE_ALIAS.get(key)
-            if alias is None:
+            if key not in _LISTDIR_TYPE_TOKENS:
                 return make_error(
                     "列出目录",
-                    f"types 参数值「{t}」不合法。合法值为：file、dir（directory）、symlink（link）、all。",
+                    f"types 参数值「{t}」不合法。合法值为：file、dir、symlink"
+                    "（命中类型任一分段即保留），不填为全部。",
                 )
-            norm_types.append(alias)
-        # 先全量校验、再判 all：避免 ["all","bogus"] 因顺序跳过校验
-        if "all" not in norm_types:
-            type_set = set(norm_types)
+            norm_types.append(key)
+        type_set = set(norm_types)
 
     regex_pat = None
     if isinstance(regex, str) and regex.strip():
@@ -263,20 +254,29 @@ def file_tools_listdir(
     stop_flags = {"match_cap": False, "visit_cap": False}
     max_depth = {1: 1, 2: 2, -1: 10 ** 9}[recursive]
 
-    def _entry_type(entry: os.DirEntry) -> str:
+    def _entry_type(entry: os.DirEntry) -> "tuple[str, Any]":
+        """条目本质类型（显示/过滤用）：dir、file、symlink|dir、symlink|file、symlink|invalid。
+
+        返回 (type串, 跟随链后的 stat 或 None)。链接条目必 stat 判定目标类型与可达性，
+        与 follow_symlink（是否展开）无关——type 答"材质"，遍历答"进不进"，两维正交。
+        """
         try:
             is_link = entry.is_symlink()
         except OSError:
             is_link = False
-        if is_link and not follow_symlink:
-            return "symlink"
+        if is_link:
+            try:
+                st = entry.stat(follow_symlinks=True)
+            except OSError:
+                st = None
+            if st is None:
+                return "symlink|invalid", None
+            kind = "dir" if stat.S_ISDIR(st.st_mode) else "file"
+            return f"symlink|{kind}", st
         try:
-            is_dir = entry.is_dir(follow_symlinks=True)
+            return ("dir" if entry.is_dir(follow_symlinks=True) else "file"), None
         except OSError:
-            is_dir = False
-        if is_dir:
-            return "directory"
-        return "symlink" if is_link else "file"
+            return "file", None
 
     def _scan(dir_path: str, depth: int, ancestors: set) -> None:
         nonlocal visited, matched
@@ -290,10 +290,11 @@ def file_tools_listdir(
                 stop_flags["visit_cap"] = True
                 return
 
-            etype = _entry_type(entry)
+            etype, link_st = _entry_type(entry)
+            is_dirish = etype in ("dir", "symlink|dir")
 
             # 环检测：仅对「准备进入」的目录计算 realpath（普通目录链无环风险，开销可忽略）
-            descend = etype == "directory" and depth < max_depth
+            descend = (etype == "dir" or (etype == "symlink|dir" and follow_symlink)) and depth < max_depth
             rp = None
             is_cycle = False
             if descend:
@@ -308,19 +309,19 @@ def file_tools_listdir(
             # 显示串：相对遍历根、统一正斜杠；disp 不带尾斜杠（exclude 匹配用），disp_full 带（列表/匹配用）
             disp = os.path.relpath(entry.path, resolved).replace("\\", "/")
             base = entry.name
-            disp_full = disp + "/" if etype == "directory" else disp
+            disp_full = disp + "/" if is_dirish else disp
 
             # exclude：gitignore 语义。目录带尾斜杠喂入（`build/` 型模式），命中目录=整树剪枝，命中文件=跳过；`!` 取反后到先中
             if exclude_spec is not None and exclude_spec.match_file(
-                (disp + "/" if etype == "directory" else disp).lower()
+                (disp + "/" if is_dirish else disp).lower()
             ):
                 continue
 
             # 五类正向过滤器：参数间 AND、列表内 OR；extensions 对目录直通
             ok = True
-            if type_set is not None and etype not in type_set:
+            if type_set is not None and type_set.isdisjoint(etype.split("|")):
                 ok = False
-            if ok and ext_set is not None and etype != "directory":
+            if ok and ext_set is not None and not is_dirish:
                 _, ext = os.path.splitext(base)
                 if ext.lower().lstrip(".") not in ext_set:
                     ok = False
@@ -335,16 +336,16 @@ def file_tools_listdir(
                 row: Dict[str, Any] = {"name": disp_full}
                 if is_cycle:
                     row["warn"] = True
-                # 断链检测：symlink 条目必须 stat（判定目标可达性，
-                # 与 columns 需求共用一次调用）；普通 file/dir 维持惰性
-                st = None
-                if etype == "symlink" or gather_set:
+                # 断链检测：链的 stat 已在 _entry_type 完成（link_st=None 即不可达）；
+                # 普通 file/dir 维持惰性（仅 gather 需要时 stat）
+                st = link_st
+                if etype == "symlink|invalid":
+                    row["broken"] = True
+                if st is None and gather_set:
                     try:
                         st = entry.stat()
                     except OSError:
                         st = None
-                if etype == "symlink" and st is None:
-                    row["broken"] = True
                 if gather_set:
                     for col in gather_set:
                         if col == "size":

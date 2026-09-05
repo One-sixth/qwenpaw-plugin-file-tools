@@ -7,7 +7,7 @@
       "parameters": {
         "properties": {
           "path": {
-            "description": "目录路径。相对路径相对于 workspace 目录，支持 ~ 展开。",
+            "description": "目录路径。支持相对路径（相对于 workspace 目录）和绝对路径，支持 ~ 展开。",
             "type": "string"
           },
           "recursive": {
@@ -87,7 +87,7 @@
               }
             ],
             "default": null,
-            "description": "按类型过滤：file、dir（别名 directory）、symlink（别名 link）、all=不过滤。只影响显示，不影响遍历。"
+            "description": "按类型过滤，命中类型任一分段即可：file、dir、symlink。"
           },
           "extensions": {
             "anyOf": [

@@ -182,7 +182,7 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
 
-**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④v1.4.0 收口句（三轮 C1/C2/C4 修补）待 commit+重装定稿。
+**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④~~v1.4.0 收口句待 commit+重装定稿~~ ✅（`412eebb`+`2625fbc`，装机 1.4.0，四轮盲测已实证收口句）。后续见 v1.5.0 节。
 
 ---
 
@@ -200,3 +200,24 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 **盲测换来的最终两句 docstring 事实**（v1.4.0 收口）：exclude「按显示路径匹配、不解析符号链接」+ 首段「输出路径相对遍历根」——凡新人自曝"在赌"的语义空白都值得一句钉死。C3（警告串塞 name 列机器使用要剥尾）维持 v1.3.0 行内警告裁决不改，仅记录。
 
 **依赖**：`pathspec>=1.1`（工厂名 `'gitignore'` 版本翻转坑，速查 §17）；qwenpaw/normal 环境均已自带。
+
+---
+
+## v1.5.0 type 系统重做 symlink|X 复合类型（2026-09-05，四轮盲测驱动）
+
+**四轮盲测**（装机 1.4.0 含收口句，新人 6/6 零试错，8.5/10 平三轮）：C1/C2 收口句双双被逐字引用 credited（T3"照着它下的注"、T4 引首段拼路径）；T5 锚根 `/__pycache__/` 凭世界经验一次过（白嫖第二铁证）。批评 4 条核实全属实，其中 type 伪装比新人描述的更严重（见下）。
+
+**核心设计（作者四拍定稿）**：
+- type 值域 = **材质|目标** 两段复合：`dir` / `file` / `symlink|dir` / `symlink|file` / `symlink|invalid`；普通目录列值 directory→dir 简写统一
+- types 过滤 = **分段匹配**（token 命中任一分段即保留）→ `["dir"]` 含活目录链、`["symlink"]` 活死链一网打尽；词表严格三词，**别名制度废除**（directory/link 报错）、**`all` 退役**（不填/空=全部）；invalid 只做显示不做过滤 token
+- **尾斜杠**：目标可达且为目录→恒带杠（含 follow=False 与环条目）；断链不带。两维正交：type 答材质、斜杠答目标形态、follow 答进不进、警告答遍历事故
+- 环警告统一「循环符号链接」去中英混排；E4 path 补「支持绝对路径」（**仅 listdir 试水**，其余 25 工具未动，推广与否看五轮考卷）
+- 修掉了四轮批评②的根因：follow 时目录链接 type 曾报 directory，`types=["symlink"]` 静默漏活目录链
+
+**实现红线**：`_entry_type` 返回 (type串, stat)，链接条目必跟随 stat（与 gather 共用）；**遍历递归判断走 `etype=="dir" or (etype=="symlink|dir" and follow_symlink)`，绝不跟 type 串的显示语义走**。
+
+**契约换钉**：必留 8 词（+`命中类型任一分段`、`绝对路径`；−`只影响显示`、`别名`）；禁回流 11 词（+`别名`/`all=不过滤`/`只影响显示`/`invalid`）。490 测试全绿；文档 622→599 字符（退役制度反而省字）。
+
+**遗留观察**：`symlink|dir` 含裸 `|`，Markdown 表格列会被它劈开视觉列（agent 文本消费无碍，喂渲染器需转义——同族 C3 裁决，记录在案）；types 文档行未预告"dir 含目录链接"，靠输出自解释+报错文案兜底——**五轮探针题**：「怎么只看所有断链」（考 invalid 分段自救）+ find -type l 世界知识核对（作者点名的第 3 项）。
+
+**未闭环**：①v1.5.0 待 commit+重装+五轮抽查；②第二个新工具想法未公布；③scratch 三目录清理裁决仍挂着；④C3 裁决在案未动。

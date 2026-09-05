@@ -234,7 +234,8 @@ class TestUndoStrParams:
         file_tools_replace_lines(tmp_file, "1", "1", "MODIFIED")
         result = file_tools_undo(tmp_file, "1")
         assert "已恢复" in result.content[0].text
-        assert "line1" in open(tmp_file, encoding="utf-8").read()
+        with open(tmp_file, encoding="utf-8") as fh:
+            assert "line1" in fh.read()
 
     def test_undo_illegal_string(self, tmp_file):
         file_tools_replace_lines(tmp_file, "1", "1", "MODIFIED")

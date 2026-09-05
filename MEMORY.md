@@ -43,8 +43,8 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 ### 运行时行尾策略（2026-09-05 第三裁决确立，v1.6.0 起生效）
 - **Python 文本模式读 `newline=None` 是通用换行翻译（原文件行尾读到即失真）；写 `newline=None` 只认 `os.linesep` 无视文件历史**——"读-改-写"型工具在 Windows 上会把 LF 文件整体转 CRLF，与被编辑内容无关
 - **裁决方向**：`*_line_separator=auto` 语义从"跟 OS"改为"**保持目标文件主行尾**"（`_dominant_newline` 探测：\r\n/\n/\r 多数者、平局 CRLF 优先、无行尾/空/新建落回 OS；复制内容随 join 的 `\n` 换装目标行尾）——copy_lines 已实现（第三裁决）
-- **推广已拍板、排期在后**：先彻底验证 copy_lines（当前阶段），通过后单开 **v1.7.0** 铺其余 24 工具（动 edit.py 等读面=改原始读+探测，影响面大）
-- 写回翻译前须 `content.replace("\r\n","\n")` 折叠（防 strict 拆行带入的 `\r\n` 二次翻译叠成 `\r\r\n`）；目标显式 `\n` 不翻译故豁免
+- **推广已于 v1.7.0 落地（2026-09-05）**：`auto=保持目标主行尾` 铺满 edit.py 六读改写工具 + `file_tools_write`（整覆盖也保持旧文件主行尾）；`file_tools_append` 为**有意豁免**（auto=平台行尾，只做增量追加不重排已有字节，钉在 `TestAppendIntentionalDivergence` 防后人"顺手统一"）；探测函数 `dominant_newline`/`detect_file_newline` 下沉 utils.py 共享
+- 写回翻译前须 `content.replace("\r\n","\n")` 折叠（防 strict 拆行/用户 content 带入的 `\r\n` 二次翻译叠成 `\r\r\n`）；目标显式 `\n` 不翻译故豁免——v1.7.0 起此守卫**上移到 `_write_file` 中央**（`newline != "\n"` 才折叠，幂等），copy_lines 本地同条件折叠保留成双保险；副产物：replace/regex_replace 的 new_text/replacement 直通道（不过 normalize_newlines）自此不再能叠出 `\r\r\n`，"写回自动统一"的 docstring 承诺首次成立；POSIX 反向失真（CRLF 文件被误转 LF）同修
 - 配方与实验事实包：小窝知识库《编程技巧速查》§20
 
 ### 测试配置
@@ -285,4 +285,4 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 - 扫荡后不变量：**全函数没有任何一行"因目标文件形态而绕开主公式"的代码**；565 全绿、--branch 99% 零可达 miss
 - **方法论**：模型转向后回来扫特例是固定动作——旧模型的补丁在新公理下常常已是冗余（本工具 5/9 特例可自动消解）；判别标准一句话：*"这个 if 是在表达语义，还是在替分隔符模型擦屁股？"*
 
-**新会话续接口令（当前阶段）**：读本节。待办顺序：① 作者**重装 1.6.1**（list 模型+特例扫荡均未装机）→ 联机冒烟重钉：新建中途止=裸尾、选到末尾空行=规范结尾、空源 1-1 合法 0 字节、末尾空行可拷、**新建+insert_line=0 报错**（原"静默忽略"收口）、LF 保真/超界追加/GBK 继承不受影响；② 通过后 commit（建议 msg：`v1.6.1: switch copy_lines to list model, retire phantom line`）；③ **v1.7.0 家族推广**范围=行尾保真铺其余 24 工具（auto=保持目标主行尾，动 edit.py 读面，知识库《编程技巧速查》§20 有配方）——记账行数字**暂不随迁**（作者裁决），若将来要统一另案；④ scratch 四目录清理裁决仍挂（cycle_proto/review_scratch/live_symlink_test/copy_lines_exam，其中 r7_smoke/r7_exam/r7_edge 为第七轮靶场）；⑤ 覆盖率 --branch 复测（口令见 v1.6.0 节，本轮已复测 99%）。
+**新会话续接口令（当前阶段）**：读本节。**v1.7.0 已闭环（2026-09-05），项目无代码挂账**：家族行尾保真落地（edit.py 6 RMW + write 按「保持旧文件主行尾」案；append 有意豁免并钉 `TestAppendIntentionalDivergence`；`dominant_newline`/`detect_file_newline` 下沉 utils；折叠守卫上移 `_write_file` 中央，顺带修复 replace/regex_replace 的 new_text/replacement 直通道可叠 `\r\r\n` 的潜伏 bug——旧 docstring"写回自动统一"承诺自此成立；POSIX 反向失真 CRLF→LF 同修）。610 测试全绿（旧 565 零翻案——旧套件从未钉过 auto 的 OS 字节）、coverage 与基线持平（edit.py 75%/97 miss 为存量欠账，99% 口径历来只圈新模块；**基线对比法=`git archive HEAD` 解包跑对照**）。commit=`3239cfd`(v1.6.1)+`b6bfe96`(v1.7.0)；装机 1.7.0 四文件 blob 逐字节核验，**联机 16 场景字节全绿**（含作者追问后补证「已钉未联机」三件套：mixed→多数者 CRLF、空文件 auto→OS、write 探测失败兜底→OS——教训：**交付报告前自查钉测与联机的差集**，第七轮补证规矩适用于每一轮）。六靶场（copy_lines_exam/cycle_proto/live_symlink_test/review_scratch/scratch_copy_lines/scratch_v170_smoke）已回收站；README 已同步 v1.7.0（「行尾与编码」节）且已 commit=`eb1034b`；本节融合更新为最后挂账（作者收妥即全绿收官）。行数字口径分裂（edit.py 摘要旧列表口径）仍为另案。

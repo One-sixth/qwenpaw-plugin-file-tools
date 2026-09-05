@@ -8,7 +8,7 @@
 - **`append` 有意豁免（作者裁决：保持原样）**：auto=OS 行分隔符——它是增量追加不重排全文，口径差异用 `TestAppendIntentionalDivergence` 钉住防后人"顺手统一"
 - **实现**：`dominant_newline`/`detect_file_newline` 从 copy_lines 下沉 `utils.py`（copy_lines 保留本地 `_detect_file_newline` 薄包装，`_dominant_newline` 改导入别名——测试 monkeypatch 接缝不破坏）；edit.py 新增 `_resolve_newline` 统一解析；`\r\n→\n` 折叠守卫上移至 `_write_file` 中央（幂等，copy_lines 双保险无感知；顺带修复 replace/regex_replace 的 new_text/replacement 直通道可叠 `\r\r\n` 的潜伏 bug——此前这两工具的"写回自动统一"docstring 承诺其实不成立）
 - docstring 收口句：edit 六工具 `auto=按操作系统自动处理` → `auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认）`；write 同理「保持原文件主行尾（新建/空/无行尾按操作系统）」；append 与 copy_lines 文案不动
-- 测试 +44 = 609（`test_family_newline.py`：6 工具 × LF/CRLF/CR 老麦/mixed 主行尾四形态保真钉、显式参数优先钉、空文件与新建 OS 口径钉、write 整覆盖保真钉、折叠守卫直通道钉、append 分歧豁免钉）；现有 565 钉零翻案（旧套件从未钉过 auto 的 OS 字节行为）
+- 测试 +45 = 610（`test_family_newline.py`：6 工具 × LF/CRLF/CR 老麦/mixed 主行尾四形态保真钉、显式参数优先钉、空文件与新建 OS 口径钉、write 整覆盖保真钉、**探测失败（编码解不动）兜底 OS 钉**、折叠守卫直通道钉、append 分歧豁免钉）；现有 565 钉零翻案（旧套件从未钉过 auto 的 OS 字节行为）
 
 ## v1.6.1 (2026-09-05)
 

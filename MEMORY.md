@@ -297,9 +297,19 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **测试**：610→614 全绿（-W error 零警告）。新增 4 钉：图例头（True startswith / False not in）、截断尾部新格式（startswith 图例 + `\n\n<<<TRUNCATED>>>内容已超出`）、默认 5000 上下界（4500 不截断/5500 截断）；test_padded_line_numbers 适配图例三行结构。版本 plugin.json 1.7.0→1.8.0（输出协议变化=minor）；CHANGELOG 已加条目。
 
+**read_block 跟随（2026-09-12 深夜第二批，作者拍板）**：三件套同步到 `file_tools_read_block`——图例头（True 有/False 无）、行尾切断标记升 `<<<TRUNCATED>>>`、尾部说明与 read_lines 同款、默认 max_chars 2048→5000；**end_col 默认 2048 保持**（行内列宽与总预算性质不同，不扩展）；空文件在 read_block 本就报「文件为空」错，图例空输出分支天然不可达（`and output_lines` 守卫保留作对称防御）。测试 614→617：新增图例 True/False 钉、默认 5000 上下界钉（约 4300/5300 字符窗口）；offset_beyond_line 适配图例三行结构；TestReadBlock.test_max_chars 由双条款 or 含糊断言升格为显式断言。
+
+**diff 与 DEFAULT_MAX_CHARS 全仓统一（2026-09-12 深夜第三批，作者拍板"max_chars 默认都改 5000"）**：`file_tools_diff` 签名+docstring 2048→5000（全仓最后一个 max_chars=2048）；`utils.DEFAULT_MAX_CHARS` 2048→5000（`make_result` 默认参数——当前唯一调用方 diff 显式传参故实际不生效，纯防未来）；**保持不动**：`CSV_FIELD_TRUNCATE=2048`（JSON/CSV 单字段截断）、read_block `end_col=2048`（行内列宽）、`LINE_CONTENT_TRUNCATE=160`（列截断）——均非「返回内容总预算」性质。max_chars 家族终态：read_lines / read_block / diff 三工具全部 5000。617 全绿不变。
+
+**CSV_FIELD_TRUNCATE + DEFAULT_MAX_CHARS 退役（2026-09-12 深夜第四批，作者拍板"两个都清理掉"）**：调查实锤生产路径零触发——CSV_FIELD_TRUNCATE 唯一消费点 format_csv 字段截断分支，但全仓仅有的 2 个调用方（find_bytes/replace_bytes，bytes.py:305/:428）字段值全为 int offset，字符串分支不可达；DEFAULT_MAX_CHARS 唯一消费点 make_result 默认参数，唯一调用方 diff（info.py:639）显式传参、测试也显式，连测试路径都不经过（对比：CSV_FIELD_TRUNCATE 至少还有 test_field_truncation 间接养着）。处置：两常量删除；format_csv 截断分支删改 `writer.writerows(rows)`（纯格式化器）；make_result 默认参数改必传（显式优于隐式，未来调用方必须想清楚预算）；连带清 10 处死导入（info.py 3 名字×2 块、read.py 2 名字×2 块）；test_field_truncation 反转为 `test_field_truncation_removed` 防复活钉（5000 字符原样输出）。常量区仅剩 `LINE_CONTENT_TRUNCATE=160`（truncate_line 用，列截断性质，未动）。617 全绿不变。
+
+**diff 输出折叠重设计（2026-09-12 深夜第五批，作者逐轮拍板）**：`file_tools_diff` 五机制落地——①跳跃装填（超预算 hunk 折叠名片后继续尝试后续）；②名片两态（情况 a"超出剩余预算"给 start 指引 / 情况 b"超出上限"给可照抄建议值 max_chars=cost+500）；③末位部分展开（方案乙：选中集最后 hunk 线性装填到预算耗尽+"仅显示前 X 字符"——**行级折叠（首尾保留+中间折叠+行号推算）经讨论后否决**：max_line_length 落地后其复杂度失去存在理由）；④max_line_length=600（min 100）行内截断+尾部汇总（元信息不占预算）；⑤双下限钳制（max_chars min 1000）。**hunk 头行尾序号 `@@ ... @@ #N`**（@@ 后注解位=git 函数名惯例，合法 unified diff；序号↔start 翻页闭环）。**make_result 随之退役删除**（TestMakeResult 删除）。会计=简单 len 累加+名片成本定值估算，允许小幅超支（作者拍板不纠结精确）。测试 617→624（diff 新钉 9）。**修复潜伏 bug**：hunk 分组 keepends 行尾符未清，新拼装二次加 \n 致双换行+成本虚高——分组后 rstrip("\r\n")。
+
+**无上下文子 agent 对抗复审（第五批收尾，FAIL→修复全过）**：0 CRITICAL / 3 MAJOR / 7 MINOR。MAJOR-1 末位部分展开缺预算检查（shown=0 退化 + used 越界）→ 修：前置"@@头+首行放得下"检查，放不下降级名片/兜底（讨论时想过、实现时漏掉的典型）；MAJOR-2 CRLF/LF 差异被 universal newline 吞掉误报"文件相同"→ 修：相同分支 detect_file_newline 比对行尾并提示；MAJOR-3 会计零测试 → 修：账本断言 len(text) ≤ max_chars+250。MINOR-1/2/3/4/6 修（cost 含 #N 后缀、部分展开计空行+说明行、两态统一建议值、截断统计只计输出、@@ 行尾 re.M）；MINOR-5/7 记录不修。复审数学发现：min hunk cost（@@+6ctx+1对改动 ≈ 100）> hidden 后最大剩余（<68）→ **下限 1000 钳制下 hidden 后不可能再有展开**，兜底汇总恒为连续尾部区间，count=span 恒精确。复审修复后 623 全绿（-W error）。
+
 **踩坑（承前编号）**：
 9. **图例行 + 空行 = split 后第二元素是空串**：钉 `lines[1]` 时想当然以为紧跟内容行；strip().split("\n") 后图例、空行、内容各占一行，空行本身就是一行元素（第一版钉错被测试当场逮住）。
 
-**待办**：①作者 review + commit（read.py / test_read.py / plugin.json / CHANGELOG.md）；②重装 1.8.0 + 联机冒烟（重点观察：真实 LLM 读输出时图例对「误读为文件自带行号」的矫治效果）；③README 无需动；④read_block 是否跟随升级=另案待议。
+**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后小音联机 5 场景全绿）；③read_block + diff 联机冒烟待作者**再次同步+重启**后补做；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
 
-> **新会话续接口令（当前阶段 v1.8.0）**：read_lines 三件套（图例头/`<<<TRUNCATED>>>`/默认 5000）已实现+614 全绿，工作区待 commit；下一步=作者 commit→重装→联机冒烟验证图例对 LLM 误读的实际矫治效果。read_block 跟随与否=另案。
+> **新会话续接口令（当前阶段 v1.8.0）**：read_lines（已 commit=`4a6ac6d`+联机 5 场景全绿）+ read_block 三件套 + diff 默认 5000（max_chars 家族统一）+ CSV_FIELD_TRUNCATE/DEFAULT_MAX_CHARS 退役（生产零触发实锤，死导入连带清理）已实现，617 全绿；工作区 7 文件增量待作者 commit；read_block+diff 联机待作者同步+重启；观察项=图例矫治 LLM 误读的日常效果。

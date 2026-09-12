@@ -18,20 +18,17 @@ import re
 import stat
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pathspec
 
 try:
     from ..backup.manager import list_history as _list_history
     from ..utils import (
-        CSV_FIELD_TRUNCATE,
-        DEFAULT_MAX_CHARS,
-        format_csv,
         format_error,
         guess_file_type,
+        detect_file_newline,
         make_error,
-        make_result,
         make_success,
         parse_int,
         read_file_content,
@@ -40,13 +37,10 @@ try:
 except ImportError:
     from backup.manager import list_history as _list_history
     from utils import (
-        CSV_FIELD_TRUNCATE,
-        DEFAULT_MAX_CHARS,
-        format_csv,
         format_error,
         guess_file_type,
+        detect_file_newline,
         make_error,
-        make_result,
         make_success,
         parse_int,
         read_file_content,
@@ -546,22 +540,27 @@ def file_tools_guess(
 
 # ── 4. file_tools_diff ────────────────────────────────────
 
+DIFF_MAX_CHARS_FLOOR = 1000   # max_chars 下限：保证折叠名片/部分展开有健康工作区
+DIFF_LINE_LENGTH_FLOOR = 100  # max_line_length 下限：正常代码行不截断
+
 
 def file_tools_diff(
     path_a: str,
     path_b: str,
     start: Union[int, str] = 1,
     count: Union[int, str] = 10,
-    max_chars: Union[int, str] = 2048,
+    max_chars: Union[int, str] = 5000,
+    max_line_length: Union[int, str] = 600,
 ) -> str:
-    """对比两个文件的差异，返回 unified diff 格式。支持 hunk 分页，可指定从第几个差异块开始显示。文件相同时返回「文件相同，没有差异。」
+    """对比两个文件的差异，返回 unified diff 格式。支持 hunk 分页，可指定从第几个差异块开始显示。文件相同时返回「文件相同，没有差异。」装不下的 hunk 会折叠成一行摘要并附翻页指引，单行超过 max_line_length 会被截断标记。
 
     Args:
         path_a: 旧文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         path_b: 新文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
         start: 起始 hunk 序号，1-based。从第几个差异块开始显示，最小值为 1。支持整数或十进制数字字符串。
         count: 最多显示多少个差异块，默认 10。支持整数或十进制数字字符串。
-        max_chars: 返回内容总字符上限，默认 2048。超过时自动截断。支持整数或十进制数字字符串。
+        max_chars: 返回内容总字符上限，默认 5000，最小 1000（低于按 1000 处理）。装不下的 hunk 折叠并给指引。支持整数或十进制数字字符串。
+        max_line_length: 单行字符上限，默认 600，最小 100（低于按 100 处理）。超过时截断该行并标记。支持整数或十进制数字字符串。
     """
     resolved_a = resolve_path(path_a)
     resolved_b = resolve_path(path_b)
@@ -575,6 +574,9 @@ def file_tools_diff(
     max_chars, err = parse_int(max_chars, "max_chars")
     if err:
         return make_error("对比", err)
+    max_line_length, err = parse_int(max_line_length, "max_line_length")
+    if err:
+        return make_error("对比", err)
 
     if not os.path.isfile(resolved_a):
         return make_error(f"对比失败，因为找不到旧文件「{resolved_a}」。请确认路径是否正确。")
@@ -582,7 +584,7 @@ def file_tools_diff(
         return make_error(f"对比失败，因为找不到新文件「{resolved_b}」。请确认路径是否正确。")
 
     try:
-        content_a, _ = read_file_content(resolved_a)
+        content_a, resolved_encoding = read_file_content(resolved_a)
         content_b, _ = read_file_content(resolved_b)
     except Exception as e:
         return make_error(f"对比失败，因为读取文件时出错：{e}。")
@@ -608,15 +610,23 @@ def file_tools_diff(
     for line in diff_lines:
         if line.startswith("@@"):
             if current_hunk:
-                hunks.append(current_hunk)
+                hunks.append([l.rstrip("\r\n") for l in current_hunk])
             current_hunk = [line]
         elif current_hunk:
             current_hunk.append(line)
 
     if current_hunk:
-        hunks.append(current_hunk)
+        hunks.append([l.rstrip("\r\n") for l in current_hunk])
 
     if not hunks:
+        # universal newline 读取下行尾差异不可见，行尾风格不同时显式提示
+        nl_a = detect_file_newline(resolved_a, resolved_encoding)
+        nl_b = detect_file_newline(resolved_b, resolved_encoding)
+        if nl_a != nl_b:
+            names = {"\r\n": "CRLF", "\n": "LF", "\r": "CR", None: "无换行"}
+            return make_success(
+                f"文件相同，没有差异。（两文件仅行尾风格不同：旧={names.get(nl_a, nl_a)}，新={names.get(nl_b, nl_b)}）"
+            )
         return make_success("文件相同，没有差异。")
 
     # 分页
@@ -630,13 +640,91 @@ def file_tools_diff(
     end_idx = min(start - 1 + count, total_hunks)
     selected = hunks[start - 1 : end_idx]
 
-    output_lines = [f"共有 {total_hunks} 个差异块，显示第 {start}~{end_idx} 个：\n"]
-    for hunk in selected:
-        output_lines.extend(hunk)
-        output_lines.append("")
+    # 参数下限钳制
+    max_chars = max(max_chars, DIFF_MAX_CHARS_FLOOR)
+    max_line_length = max(max_line_length, DIFF_LINE_LENGTH_FLOOR)
 
-    result = "".join(output_lines)
-    return make_success(make_result(result, max_chars))
+    # 行长截断：超长行截到 max_line_length 并标记（按 hunk 计数，尾部汇总只计实际输出的）
+    trunc_per_hunk: List[int] = []
+    for hunk in selected:
+        count_trunc = 0
+        for j, line in enumerate(hunk):
+            if len(line) > max_line_length:
+                hunk[j] = line[:max_line_length] + "<<<TRUNCATED>>>"
+                count_trunc += 1
+        trunc_per_hunk.append(count_trunc)
+
+    # 跳跃装填：放不下的 hunk 折叠成名片并继续尝试后续；末位 hunk 部分展开
+    parts: List[str] = [f"共有 {total_hunks} 个差异块，显示第 {start}~{end_idx} 个：\n"]
+    used = len(parts[0])
+    hidden: List[Tuple[int, int]] = []  # 兜底汇总的 (全局序号, 成本)
+    truncated_out = 0  # 实际输出 hunk 的截断行数
+
+    def hunk_cost(hunk: List[str], n: int) -> int:
+        # 展开成本估算：@@ 行含序号后缀，每行含换行，块尾空行
+        return sum(len(line) + 1 for line in hunk) + len(f" #{n}") + 1
+
+    for i, hunk in enumerate(selected):
+        n = start + i
+        header = hunk[0] + f" #{n}\n"
+        cost = hunk_cost(hunk, n)
+
+        if used + cost <= max_chars:
+            # 全展开
+            parts.append(header)
+            parts.extend(line + "\n" for line in hunk[1:])
+            parts.append("\n")
+            used += cost
+            truncated_out += trunc_per_hunk[i]
+            continue
+
+        is_last = i == len(selected) - 1
+        # 末位 hunk：至少能放下 @@ 头 + 首行内容时部分展开，线性装填到预算耗尽
+        if is_last and used + len(header) + len(hunk[1]) + 1 <= max_chars:
+            parts.append(header)
+            used += len(header)
+            shown = 0
+            for line in hunk[1:]:
+                if used + len(line) + 1 > max_chars:
+                    break
+                parts.append(line + "\n")
+                used += len(line) + 1
+                shown += len(line)
+            used += 1  # 块尾空行
+            parts.append(
+                f"[该 hunk 展开约 {cost} 字符，仅显示前 {shown} 字符。"
+                f"完整查看：start={n} count=1 max_chars={cost + 500}]\n"
+            )
+            truncated_out += trunc_per_hunk[i]
+            continue
+
+        # 折叠名片（超出剩余预算 / 超出 max_chars 上限，均附完整查看建议）
+        over = (
+            f"超出 max_chars={max_chars} 上限，已折叠。"
+            if cost > max_chars
+            else "超出剩余预算，已折叠。"
+        )
+        note = f"[该 hunk 展开约 {cost} 字符，{over}查看：start={n} count=1 max_chars={cost + 500}]\n"
+        if used + len(header) + len(note) + 1 <= max_chars:
+            parts.append(header + note + "\n")
+            used += len(header) + len(note) + 1
+        else:
+            hidden.append((n, cost))
+
+    if hidden:
+        n0, n1 = hidden[0][0], hidden[-1][0]
+        total_cost = sum(c for _, c in hidden)
+        span = n1 - n0 + 1
+        parts.append(
+            f"\n[另有 {len(hidden)} 个差异块未显示（约 {total_cost} 字符）。查看：start={n0} count={span}]\n"
+        )
+
+    if truncated_out:
+        parts.append(
+            f"\n<<<TRUNCATED>>>共 {truncated_out} 行因超过 max_line_length={max_line_length} 被截断。\n"
+        )
+
+    return make_success("".join(parts))
 
 
 # ── 5. file_tools_history ─────────────────────────────────

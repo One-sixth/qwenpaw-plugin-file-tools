@@ -201,10 +201,12 @@ class TestReadBlock:
             start_col=100, end_col=200,
         )
         lines = result.content[0].text.strip().split("\n")
-        assert len(lines) == 2
+        # 图例 + 空行 + 两行内容
+        assert len(lines) == 4
+        assert lines[0] == "行号 > 行内容"
         # 行内容为空，格式为 `行号 >`
-        assert "1 >" in lines[0]
-        assert "2 >" in lines[1]
+        assert "1 >" in lines[2]
+        assert "2 >" in lines[3]
 
     def test_offset_reverse(self, multi_line_file):
         result = file_tools_read_block(
@@ -218,7 +220,8 @@ class TestReadBlock:
             multi_line_file, start_row=1, end_row=20,
             start_col=1, end_col=5000, max_chars=50,
         )
-        assert "<<truncated>>" in result.content[0].text or len(result.content[0].text) < 200
+        assert "<<<TRUNCATED>>>" in result.content[0].text
+        assert "\n\n<<<TRUNCATED>>>内容已超出" in result.content[0].text
 
     def test_max_chars_truncated_hint_from_start(self, many_medium_lines_file):
         """从头读，截断后提示行号应等于被截断行号。"""
@@ -245,6 +248,34 @@ class TestReadBlock:
         next_line = int(match.group(1))
         # 提示行号应 >= start_row
         assert 10 <= next_line <= 30, f"提示行号 {next_line} 越界"
+
+    def test_legend_header(self, multi_line_file):
+        """show_line_number=True 顶部带图例，False 无图例。"""
+        r_true = file_tools_read_block(multi_line_file, start_row=2, end_row=3)
+        assert r_true.content[0].text.startswith("行号 > 行内容\n\n")
+        assert "2 > line2" in r_true.content[0].text
+        r_false = file_tools_read_block(multi_line_file, start_row=2, end_row=3, show_line_number=False)
+        assert "行号 > 行内容" not in r_false.content[0].text
+
+    def test_default_max_chars_5000_under(self, tmp_dir):
+        """默认 max_chars=5000：约 4300 字符窗口一次读完不截断（旧默认 2048 必截断）。"""
+        path = os.path.join(tmp_dir, "blk_under.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(f"row{i:04d} " + "x" * 40 for i in range(1, 91)))
+        result = file_tools_read_block(path, start_row=1, end_row=90, start_col=1, end_col=200)
+        text = result.content[0].text
+        assert "如需继续阅读" not in text
+        assert "row0090" in text
+
+    def test_default_max_chars_5000_over(self, tmp_dir):
+        """默认 max_chars=5000：约 5300 字符窗口触发截断并带新尾部说明。"""
+        path = os.path.join(tmp_dir, "blk_over.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(f"row{i:04d} " + "x" * 40 for i in range(1, 111)))
+        result = file_tools_read_block(path, start_row=1, end_row=110, start_col=1, end_col=200)
+        text = result.content[0].text
+        assert "\n\n<<<TRUNCATED>>>内容已超出 max_chars=5000 限制。" in text
+        assert "如需继续阅读" in text
 
     def test_nonexistent(self):
         result = file_tools_read_block("/nonexistent.txt", start_row=1, end_row=5)

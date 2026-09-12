@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 # ── 常量 ──────────────────────────────────────────────────
 
 LINE_CONTENT_TRUNCATE = 160
-CSV_FIELD_TRUNCATE = 2048
-DEFAULT_MAX_CHARS = 2048
 
 # ── 路径标准化 ─────────────────────────────────────────────
 
@@ -188,26 +186,10 @@ def format_csv(
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
 
-    for row in rows:
-        safe_row = {}
-        for k, v in row.items():
-            if isinstance(v, str) and len(v) > CSV_FIELD_TRUNCATE:
-                safe_row[k] = v[:CSV_FIELD_TRUNCATE] + "<<truncated>>"
-            else:
-                safe_row[k] = v
-        writer.writerow(safe_row)
+    writer.writerows(rows)
 
     return output.getvalue()
 
-
-# ── 纯文本结果 ────────────────────────────────────────────
-
-
-def make_result(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> str:
-    """构建结果文本，超出 max_chars 时截断。"""
-    if len(text) > max_chars:
-        return text[:max_chars] + "\n<<truncated>>"
-    return text
 
 # ── ToolChunk 结果封装 ────────────────────────────────────
 

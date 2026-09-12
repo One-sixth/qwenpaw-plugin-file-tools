@@ -17,8 +17,6 @@ from typing import Any, Dict, List, Optional, Union
 
 try:
     from ..utils import (
-        DEFAULT_MAX_CHARS,
-        format_csv,
         format_error,
         make_error,
         make_success,
@@ -29,8 +27,6 @@ try:
     )
 except ImportError:
     from utils import (
-        DEFAULT_MAX_CHARS,
-        format_csv,
         format_error,
         make_error,
         make_success,
@@ -153,7 +149,7 @@ def file_tools_read_block(
     end_row: Union[int, str],
     start_col: Union[int, str] = 1,
     end_col: Union[int, str] = 2048,
-    max_chars: Union[int, str] = 2048,
+    max_chars: Union[int, str] = 5000,
     encoding: str = "auto",
     show_line_number: bool = True,
 ) -> str:
@@ -165,9 +161,9 @@ def file_tools_read_block(
         end_row: 结束行号，1-based，包含。必须 >= start_row，超出文件总行数时取到文件末尾。支持整数或十进制数字字符串。
         start_col: 行内起始列号，1-based，包含。默认 1。必须 <= end_col。超过该行长度时取空字符串。支持整数或十进制数字字符串。
         end_col: 行内结束列号，1-based，包含。默认 2048。必须 >= start_col。支持整数或十进制数字字符串。
-        max_chars: 返回内容总字符上限，默认 2048。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。
+        max_chars: 返回内容总字符上限，默认 5000。超过时截断并提示从截断位置继续读取。支持整数或十进制数字字符串。
         encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
-        show_line_number: 行号显示模式。True=每行带行号前缀（默认），False=直接输出原文切片。
+        show_line_number: 行号显示模式。True=顶部带图例、每行带行号前缀（默认），False=直接输出原文切片。
     """
     resolved = resolve_path(path)
 
@@ -234,7 +230,7 @@ def file_tools_read_block(
         if char_count > max_chars:
             is_truncated = True
             remaining = max_chars - (char_count - len(content))
-            content = content[:remaining] + "<<truncated>>"
+            content = content[:remaining] + "<<<TRUNCATED>>>"
             if show_line_number:
                 output_lines.append(f"{row_num} > {content}")
             else:
@@ -250,7 +246,10 @@ def file_tools_read_block(
 
     if is_truncated:
         next_line = row_num
-        result += f"\n`<<truncated>>` 内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
+        result += f"\n\n<<<TRUNCATED>>>内容已超出 max_chars={max_chars} 限制。如需继续阅读，请从第 {next_line} 行开始读取（该行内容不完整，会重新返回完整内容）。\n"
+
+    if show_line_number and output_lines:
+        result = "行号 > 行内容\n\n" + result
 
     return make_success(result)
 

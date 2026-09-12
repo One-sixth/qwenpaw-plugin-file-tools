@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import tempfile
 
@@ -1169,15 +1170,137 @@ class TestDiff:
         result = file_tools_diff(a, b, start=2, count=1)
         assert "第 2" in result.content[0].text or "changed" in result.content[0].text
 
+    @staticmethod
+    def _pair(tmp_dir, lines_a, lines_b):
+        a = os.path.join(tmp_dir, "da.txt")
+        b = os.path.join(tmp_dir, "db.txt")
+        with open(a, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines_a))
+        with open(b, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines_b))
+        return a, b
+
     def test_max_chars(self, tmp_dir):
+        """max_chars 低于下限按 1000 处理；超上限 hunk 折叠成名片（情况 b）。"""
         a = os.path.join(tmp_dir, "a.txt")
         b = os.path.join(tmp_dir, "b.txt")
         with open(a, "w") as f:
             f.write("a\n" * 1000)
         with open(b, "w") as f:
             f.write("b\n" * 1000)
-        result = file_tools_diff(a, b, max_chars=100)
-        assert "<<truncated>>" in result.content[0].text or len(result.content[0].text) <= 150
+        result = file_tools_diff(a, b, max_chars=100)  # 钳到 1000
+        text = result.content[0].text
+        # 单 hunk 是末位 → 走部分展开（乙规则），不是名片
+        assert "仅显示前" in text
+        assert "start=1 count=1 max_chars=" in text
+        assert "未显示" not in text
+
+    def test_hunk_header_number(self, tmp_dir):
+        """hunk 头行尾带全局序号 #N。"""
+        lines_a = [f"line{i}" for i in range(100)]
+        lines_b = lines_a.copy()
+        lines_b[10] = "changed10"
+        lines_b[50] = "changed50"
+        lines_b[80] = "changed80"
+        a, b = self._pair(tmp_dir, lines_a, lines_b)
+        result = file_tools_diff(a, b)
+        text = result.content[0].text
+        assert " #1\n" in text
+        assert " #2\n" in text
+        assert " #3\n" in text
+        assert sum(1 for line in text.split("\n") if line.startswith("@@")) == 3
+        for n in ("1", "2", "3"):
+            assert re.search(rf"^@@ .* #{n}$", text, re.M), f"@@ 行尾缺 #{n}"
+
+    def test_jump_fill_fold_then_expand(self, tmp_dir):
+        """中块折叠成名片后，后续小 hunk 继续展开（跳跃装填）。"""
+        lines_a = [f"base{i:04d}" for i in range(500)]
+        lines_b = lines_a.copy()
+        for i in range(5, 15):
+            lines_b[i] = f"mod1_{i}"
+        for i in range(100, 400):
+            lines_b[i] = f"m2_{i:04d}"
+        lines_b[450] = "mod3"
+        a, b = self._pair(tmp_dir, lines_a, lines_b)
+        result = file_tools_diff(a, b, max_chars=1000, count=999)
+        text = result.content[0].text
+        # #2 非末位且超上限 → 情况 b 名片
+        assert "超出 max_chars=1000 上限" in text and "start=2 count=1" in text
+        assert "mod3" in text  # hunk#3 跳过 #2 后继续展开
+
+    def test_fold_case_a(self, tmp_dir):
+        """hunk 未超 max_chars 但超出剩余预算 → 名片含「超出剩余预算」。"""
+        lines_a = [f"base{i:04d}" for i in range(200)]
+        lines_b = lines_a.copy()
+        for i in range(10, 13):
+            lines_b[i] = f"m1_{i}"
+        for i in range(100, 145):
+            lines_b[i] = f"m2_{i:04d}"
+        for i in range(180, 183):
+            lines_b[i] = f"m3_{i}"
+        a, b = self._pair(tmp_dir, lines_a, lines_b)
+        result = file_tools_diff(a, b, max_chars=1000)
+        text = result.content[0].text
+        assert "超出剩余预算" in text
+        assert "start=2 count=1" in text
+
+    def test_line_length_truncation(self, tmp_dir):
+        """单行超 max_line_length 截断并标记，末尾汇总说明。"""
+        a, b = self._pair(tmp_dir, ["x" * 8000], ["y" * 8000])
+        result = file_tools_diff(a, b)  # 默认 5000/600
+        text = result.content[0].text
+        assert "<<<TRUNCATED>>>" in text
+        assert "共 2 行因超过 max_line_length=600 被截断。" in text
+        marked = [line for line in text.split("\n") if line.startswith(("-x", "+y"))]
+        assert len(marked) == 2
+        assert all(len(line) == 600 + len("<<<TRUNCATED>>>") for line in marked)
+
+    def test_line_length_floor(self, tmp_dir):
+        """max_line_length 低于下限按 100 处理，短行不受影响。"""
+        a, b = self._pair(tmp_dir, ["x" * 50], ["y" * 50])
+        result = file_tools_diff(a, b, max_line_length=10)  # 钳到 100
+        assert "<<<TRUNCATED>>>" not in result.content[0].text
+
+    def test_partial_expand_last(self, tmp_dir):
+        """count=1 装不下末位 hunk → 线性部分展开 + 建议值。"""
+        lines_a = [f"old{i:04d}" for i in range(650)]
+        lines_b = [f"new{i:04d}" for i in range(650)]
+        a, b = self._pair(tmp_dir, lines_a, lines_b)
+        result = file_tools_diff(a, b, count=1)  # 默认 max_chars=5000
+        text = result.content[0].text
+        assert "仅显示前" in text
+        assert "完整查看：start=1 count=1 max_chars=" in text
+        assert "已折叠" not in text  # 是部分展开，不是名片
+
+    def test_char_floor(self, tmp_dir):
+        """max_chars 极小值钳到 1000 后走名片而非兜底。"""
+        a = os.path.join(tmp_dir, "a.txt")
+        b = os.path.join(tmp_dir, "b.txt")
+        with open(a, "w") as f:
+            f.write("a\n" * 1000)
+        with open(b, "w") as f:
+            f.write("b\n" * 1000)
+        result = file_tools_diff(a, b, max_chars=50)
+        text = result.content[0].text
+        # 单 hunk 是末位 → 部分展开（乙规则），且不是兜底
+        assert "仅显示前" in text
+        assert "未显示" not in text
+
+    def test_bottom_fallback(self, tmp_dir):
+        """预算耗尽连名片都放不下 → 兜底汇总行给出翻页指引。"""
+        lines_a = [f"base{i:04d}" for i in range(500)]
+        lines_b = lines_a.copy()
+        for k in range(20):  # 20 个均匀小 hunk
+            lines_b[k * 25] = f"mod{k:02d}"
+        a, b = self._pair(tmp_dir, lines_a, lines_b)
+        result = file_tools_diff(a, b, max_chars=1000, count=999)
+        text = result.content[0].text
+        match = re.search(r"另有 (\d+) 个差异块未显示（约 (\d+) 字符）", text)
+        assert match is not None, f"未找到兜底汇总行：{text}"
+        assert int(match.group(1)) >= 1
+        assert " #1\n" in text  # 前面的 hunk 正常展开过
+        # 账本断言：正文不超预算，元信息（兜底行）允许小幅超出
+        assert len(text) <= 1000 + 250
 
     def test_start_lt_1(self, tmp_dir):
         """diff 的 start<1 应报错"""

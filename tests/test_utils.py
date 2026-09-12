@@ -7,7 +7,6 @@ from utils import (
     format_csv,
     format_error,
     guess_file_type,
-    make_result,
     normalize_newlines,
     parse_int,
     read_file_content,
@@ -110,21 +109,13 @@ class TestFormatCsv:
         assert "<<truncated>>" not in result
         assert "x" * 2000 in result
 
-    def test_field_truncation(self):
+    def test_field_truncation_removed(self):
+        """字段级截断已随 CSV_FIELD_TRUNCATE 一并移除，超长字段原样输出。"""
         very_long = "x" * 5000
         rows = [{"data": very_long}]
         result = format_csv(rows, fieldnames=["data"])
-        assert "<<truncated>>" in result
-
-
-class TestMakeResult:
-    def test_short_text(self):
-        assert make_result("hello", 100) == "hello"
-
-    def test_truncated(self):
-        result = make_result("x" * 5000, 100)
-        assert "<<truncated>>" in result
-        assert len(result) <= 100 + len("\n<<truncated>>")
+        assert "<<truncated>>" not in result
+        assert very_long in result
 
 
 class TestFormatError:

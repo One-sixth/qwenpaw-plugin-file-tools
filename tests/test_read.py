@@ -46,12 +46,14 @@ class TestReadLines:
         assert "失败" in result.content[0].text
 
     def test_padded_line_numbers(self, multi_line_file):
-        """行号右对齐固定宽度。"""
+        """顶部图例行，其后每行 `行号 > 内容`。"""
         result = file_tools_read_lines(multi_line_file, start_line=9, line_count=3)
         lines = result.content[0].text.strip().split("\n")
         assert len(lines) >= 1
-        # 第一行格式：` 9 > line9`（行号右对齐，2位宽度）
-        assert "9 > line9" in lines[0]
+        # 第一行是图例，第二行是空行，第三行起才是内容
+        assert lines[0] == "行号 > 行内容"
+        assert lines[1] == ""
+        assert "9 > line9" in lines[2]
 
     def test_empty_file(self, empty_file):
         """空文件返回空字符串。"""
@@ -61,7 +63,7 @@ class TestReadLines:
 
     def test_max_chars(self, long_line_file):
         result = file_tools_read_lines(long_line_file, line_count=-1, max_chars=50)
-        assert "<<truncated>>" in result.content[0].text
+        assert "<<<TRUNCATED>>>" in result.content[0].text
 
     def test_chinese(self, chinese_file):
         result = file_tools_read_lines(chinese_file, line_count=3)
@@ -126,8 +128,10 @@ class TestReadLines:
     def test_show_line_number_false_truncated(self, long_line_file):
         """show_line_number=False 时截断提示仍保留。"""
         result = file_tools_read_lines(long_line_file, line_count=-1, max_chars=50, show_line_number=False)
-        assert "<<truncated>>" in result.content[0].text
+        assert "<<<TRUNCATED>>>" in result.content[0].text
         assert "如需继续阅读" in result.content[0].text
+        # False 模式不带图例
+        assert "行号 > 行内容" not in result.content[0].text
 
     def test_only_newlines_file(self, tmp_dir):
         """仅换行符文件应正确读取。"""
@@ -145,6 +149,40 @@ class TestReadLines:
         result = file_tools_read_lines(path, line_count=-1, show_line_number=True)
         assert "1 > line1" in result.content[0].text
         assert "2 > line2" in result.content[0].text
+
+    def test_legend_header(self, multi_line_file):
+        """show_line_number=True 时输出顶部带格式图例。"""
+        result = file_tools_read_lines(multi_line_file, start_line=1, line_count=3)
+        assert result.content[0].text.startswith("行号 > 行内容\n\n")
+        assert "1 > line1" in result.content[0].text
+
+    def test_truncated_footer_format(self, long_line_file):
+        """截断尾部格式：行尾标记 + 空行 + 标记开头说明，图例仍在顶部。"""
+        result = file_tools_read_lines(long_line_file, line_count=-1, max_chars=50)
+        text = result.content[0].text
+        assert text.startswith("行号 > 行内容\n\n")
+        assert "<<<TRUNCATED>>>" in text
+        assert "\n\n<<<TRUNCATED>>>内容已超出 max_chars=50 限制。" in text
+
+    def test_default_max_chars_5000_under(self, tmp_dir):
+        """默认 max_chars=5000：4500 字符内容一次性读完不截断。"""
+        path = os.path.join(tmp_dir, "under.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(f"row{i:04d} " + "x" * 40 for i in range(1, 91)))
+        result = file_tools_read_lines(path, line_count=-1)
+        text = result.content[0].text
+        assert "如需继续阅读" not in text
+        assert "row0090" in text
+
+    def test_default_max_chars_5000_over(self, tmp_dir):
+        """默认 max_chars=5000：5500 字符内容触发截断并带新尾部说明。"""
+        path = os.path.join(tmp_dir, "over.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(f"row{i:04d} " + "x" * 40 for i in range(1, 111)))
+        result = file_tools_read_lines(path, line_count=-1)
+        text = result.content[0].text
+        assert "\n\n<<<TRUNCATED>>>内容已超出 max_chars=5000 限制。" in text
+        assert "如需继续阅读" in text
 
 
 class TestReadBlock:

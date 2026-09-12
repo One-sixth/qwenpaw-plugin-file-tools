@@ -285,4 +285,21 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 - 扫荡后不变量：**全函数没有任何一行"因目标文件形态而绕开主公式"的代码**；565 全绿、--branch 99% 零可达 miss
 - **方法论**：模型转向后回来扫特例是固定动作——旧模型的补丁在新公理下常常已是冗余（本工具 5/9 特例可自动消解）；判别标准一句话：*"这个 if 是在表达语义，还是在替分隔符模型擦屁股？"*
 
-**新会话续接口令（当前阶段）**：读本节。**v1.7.0 已闭环（2026-09-05），项目无代码挂账**：家族行尾保真落地（edit.py 6 RMW + write 按「保持旧文件主行尾」案；append 有意豁免并钉 `TestAppendIntentionalDivergence`；`dominant_newline`/`detect_file_newline` 下沉 utils；折叠守卫上移 `_write_file` 中央，顺带修复 replace/regex_replace 的 new_text/replacement 直通道可叠 `\r\r\n` 的潜伏 bug——旧 docstring"写回自动统一"承诺自此成立；POSIX 反向失真 CRLF→LF 同修）。610 测试全绿（旧 565 零翻案——旧套件从未钉过 auto 的 OS 字节）、coverage 与基线持平（edit.py 75%/97 miss 为存量欠账，99% 口径历来只圈新模块；**基线对比法=`git archive HEAD` 解包跑对照**）。commit=`3239cfd`(v1.6.1)+`b6bfe96`(v1.7.0)；装机 1.7.0 四文件 blob 逐字节核验，**联机 16 场景字节全绿**（含作者追问后补证「已钉未联机」三件套：mixed→多数者 CRLF、空文件 auto→OS、write 探测失败兜底→OS——教训：**交付报告前自查钉测与联机的差集**，第七轮补证规矩适用于每一轮）。六靶场（copy_lines_exam/cycle_proto/live_symlink_test/review_scratch/scratch_copy_lines/scratch_v170_smoke）已回收站；README 已同步 v1.7.0（「行尾与编码」节）且已 commit=`eb1034b`；本节融合更新为最后挂账（作者收妥即全绿收官）。行数字口径分裂（edit.py 摘要旧列表口径）仍为另案。
+**新会话续接口令（v1.7.0 阶段，已被文末 v1.8.0 节接替）**：读本节。**v1.7.0 已闭环（2026-09-05），项目无代码挂账**：家族行尾保真落地（edit.py 6 RMW + write 按「保持旧文件主行尾」案；append 有意豁免并钉 `TestAppendIntentionalDivergence`；`dominant_newline`/`detect_file_newline` 下沉 utils；折叠守卫上移 `_write_file` 中央，顺带修复 replace/regex_replace 的 new_text/replacement 直通道可叠 `\r\r\n` 的潜伏 bug——旧 docstring"写回自动统一"承诺自此成立；POSIX 反向失真 CRLF→LF 同修）。610 测试全绿（旧 565 零翻案——旧套件从未钉过 auto 的 OS 字节）、coverage 与基线持平（edit.py 75%/97 miss 为存量欠账，99% 口径历来只圈新模块；**基线对比法=`git archive HEAD` 解包跑对照**）。commit=`3239cfd`(v1.6.1)+`b6bfe96`(v1.7.0)；装机 1.7.0 四文件 blob 逐字节核验，**联机 16 场景字节全绿**（含作者追问后补证「已钉未联机」三件套：mixed→多数者 CRLF、空文件 auto→OS、write 探测失败兜底→OS——教训：**交付报告前自查钉测与联机的差集**，第七轮补证规矩适用于每一轮）。六靶场（copy_lines_exam/cycle_proto/live_symlink_test/review_scratch/scratch_copy_lines/scratch_v170_smoke）已回收站；README 已同步 v1.7.0（「行尾与编码」节）且已 commit=`eb1034b`；本节融合更新为最后挂账（作者收妥即全绿收官）。行数字口径分裂（edit.py 摘要旧列表口径）仍为另案。
+
+---
+
+## v1.8.0 read_lines 输出格式升级（2026-09-12，作者拍板三件套）
+
+**改动**：①**图例头**——`show_line_number=True` 时输出顶部加 `行号 > 行内容` + 空行（动机：泰斗先生实测**多个 LLM 把 `N > 内容` 前缀误读为文件自带行号**，图例让格式自解释；False 模式/空文件不加，空文件恒空串）；②**截断协议**——`<<truncated>>` → `<<<TRUNCATED>>>`（行尾粘标记 + 4096 行内上限标记同步升格），尾部说明改 `\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。…`（空行分隔内容区/元信息区、说明行以标记开头；对齐 agentscope 生态大写惯例——长时记忆中间件 `<<<TRUNCATED>>>` 为家族唯一先例；**查证事实：内置 agentscope Read 无总预算无尾部提示**，`{i:6d}\t{content}` + 超长行 `[truncated]`）；③**max_chars 默认 2048→5000**（2048 实测连续触发续读 round-trip，5000≈2k token 克制）。
+
+**范围纪律**：仅动 `file_tools_read_lines`。read_block（同款旧文案旧标记）与 regex/utils 共享助手的 `<<truncated>>` 不跟随，另案。元信息（图例/尾部说明）后拼接不占 max_chars 预算（与 v1.7.0 尾部说明口径一致）。
+
+**测试**：610→614 全绿（-W error 零警告）。新增 4 钉：图例头（True startswith / False not in）、截断尾部新格式（startswith 图例 + `\n\n<<<TRUNCATED>>>内容已超出`）、默认 5000 上下界（4500 不截断/5500 截断）；test_padded_line_numbers 适配图例三行结构。版本 plugin.json 1.7.0→1.8.0（输出协议变化=minor）；CHANGELOG 已加条目。
+
+**踩坑（承前编号）**：
+9. **图例行 + 空行 = split 后第二元素是空串**：钉 `lines[1]` 时想当然以为紧跟内容行；strip().split("\n") 后图例、空行、内容各占一行，空行本身就是一行元素（第一版钉错被测试当场逮住）。
+
+**待办**：①作者 review + commit（read.py / test_read.py / plugin.json / CHANGELOG.md）；②重装 1.8.0 + 联机冒烟（重点观察：真实 LLM 读输出时图例对「误读为文件自带行号」的矫治效果）；③README 无需动；④read_block 是否跟随升级=另案待议。
+
+> **新会话续接口令（当前阶段 v1.8.0）**：read_lines 三件套（图例头/`<<<TRUNCATED>>>`/默认 5000）已实现+614 全绿，工作区待 commit；下一步=作者 commit→重装→联机冒烟验证图例对 LLM 误读的实际矫治效果。read_block 跟随与否=另案。

@@ -310,6 +310,6 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 **踩坑（承前编号）**：
 9. **图例行 + 空行 = split 后第二元素是空串**：钉 `lines[1]` 时想当然以为紧跟内容行；strip().split("\n") 后图例、空行、内容各占一行，空行本身就是一行元素（第一版钉错被测试当场逮住）。
 
-**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后小音联机 5 场景全绿）；③read_block + diff 联机冒烟待作者**再次同步+重启**后补做；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
+**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后小音联机 5 场景全绿）；③~~read_block + diff 联机冒烟~~ ✅（2026-09-13 凌晨作者重装后联机 9/9 全绿：read_block 3 发（图例/截断新协议/无图例）+ diff 6 发（行尾序号头/跳跃装填名片b+后续展开/行长截断+汇总/count=1部分展开/CRLF-LF行尾提示/修正数据后名片b复验））；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
 
-> **新会话续接口令（当前阶段 v1.8.0）**：read_lines（已 commit=`4a6ac6d`+联机 5 场景全绿）+ read_block 三件套 + diff 默认 5000（max_chars 家族统一）+ CSV_FIELD_TRUNCATE/DEFAULT_MAX_CHARS 退役（生产零触发实锤，死导入连带清理）已实现，617 全绿；工作区 7 文件增量待作者 commit；read_block+diff 联机待作者同步+重启；观察项=图例矫治 LLM 误读的日常效果。
+> **新会话续接口令（收工态 v1.8.0）**：五批改动全部落地——read_lines 三件套（已 commit=`4a6ac6d`+联机 5 场景）+ read_block 批 + diff/常量批 + 死常量清扫批 + diff 折叠重设计批（8 文件增量待作者 commit）；复审闭环（FAIL→修复全过）+ 联机 14 场景全绿。无代码挂账。观察项：图例矫治 LLM 误读的日常效果、read_block 行级折叠否决后若需部分视野再议。

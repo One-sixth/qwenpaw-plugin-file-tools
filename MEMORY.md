@@ -20,8 +20,16 @@
 - **双通道（2026-09-04 实测修正）**：Agent（LLM）看到的工具总体描述 = **函数 docstring 第一段**（`\n\n` 截断），参数说明 = docstring 的 `Args:` 段落；`plugin.py` 的 `register_tool(description=...)` **只进 GUI**（写入 agent.json 的 `tools.builtin_tools.<name>.description`，工具选项栏展示），Agent 看不到
 - `register_tool` description 保持简短中文（1 句话），**不写依赖库名等实现细节**（v1.2.4 起：「依赖 pytrash」类语句全部移除；运行时错误提示除外）
 - 不单独写 skill 文档，docstring 就是 agent 的完整指南
-- **极简直觉化原则（2026-09-05 泰斗先生拍板，v1.3.3）**：指南≠注意事项清单。docstring 只写匹配 agent 世界知识的直觉级说明（每参数一句级），边界情况由运行时输出自解释（行内警告/统计行/中文报错）。listdir 文档 601 字符（schema 参数描述口径）为预算参照；「裹脚布」禁回流清单钉在 `TestEntryWording.test_docstring_minimal_contract`
+- **极简直觉化原则（2026-09-05 作者拍板，v1.3.3）**：指南≠注意事项清单。docstring 只写匹配 agent 世界知识的直觉级说明（每参数一句级），边界情况由运行时输出自解释（行内警告/统计行/中文报错）。listdir 文档 601 字符（schema 参数描述口径）为预算参照；「裹脚布」禁回流清单钉在 `TestEntryWording.test_docstring_minimal_contract`
 - ⚠️ GUI 文案**只在条目不存在时写入**（`_write_tool_config` 对已存在条目 skip），插件升级不刷新 → 会留 v1.0 化石长文案；刷新办法：卸载插件（条目被删）再安装，或直接改 agent.json（QwenPaw 指纹缓存支持免重启，参考 `fix_agent_desc.py`）
+
+### manifest meta 声明与 agent 可见性（2026-10-15 发现）
+- **现象**：27 个工具在非 default agent（ChqnR9）的 UI 工具管理页**完全隐身**（agent.json 快照 0 条）；default 可见仅因历史遗留旧条目（enabled=true、v1.0 化石描述）
+- **根因**：plugin.json **无 `meta.tools` 声明** → QwenPaw `_merge_plugin_manifest_tools()`（manifest meta 是插件工具进 agent 配置快照的唯一通道）补不进条目；对照 wait_agent_task 插件有声明故全 agent 可见
+- **⚠️ UI 隐身 ≠ 运行时不可用**：实验复现 `_resolve_config_gates` + `ToolRegistry.filter` 证明快照无条目的插件工具照样放行（LLM 可调），只是 UI 看不见、无法开关——「功能正常、设置页隐身」的迷惑型 bug
+- **坑**：manifest 声明 `enabled: true` 会被忽略（QwenPaw 2.2.1 `_add_plugin_tool_default` 硬编码 enabled=False），补声明后新条目初始为禁用态，需逐 agent UI 开启
+- **执行状态（2026-10-15）**：方案 A 已落地——两份工作树（`D:\Data\github_repo\` 开发目录 + `C:\Users\TWD\.qwenpaw\plugins\` 装机目录）plugin.json 均已补 27 条 meta.tools（name/description/icon 与 register_tool 一致，省略 enabled 字段），JSON 合法 + 与注册名双向一致校验通过，git commit 留给作者；**版本 bump v1.8.1 + CHANGELOG 补段**（manifest 纯元数据修复）；⚠️ **第二层根因实锤**：QwenPaw `load_agent_config` 指纹缓存——存量 agent 的 agent.json 文件不变则配置对象永不重载，重启/卸载重装均无法补条目，存量 agent 需直改 agent.json（已对 ChqnR9/test3 执行：33 条 enabled=true）；隐私清扫：全仓真实称呼→「作者」（CHANGELOG 1 处 + MEMORY 6 处 + 联机主语中性化，扫描归零）
+- **v1.8.2 追加（2026-10-16）：UI 分组**——QwenPaw 2.2.2 分组机制实测：内置工具查前端硬编码表；**插件工具走后端 `ToolInfo.category`**（`_build_tool_info` 读 manifest `meta.tools[].category`，routers/tools.py:189-191），前端 `TOOL_GROUPS` 只认 6 个预定义组（files/web/media/agents/runtime/migration），未命中落「未分类」，**自创组名无效**；`register_tool(tool_type=...)` 与 UI 分组无关（仅 governance 白名单）。27 条声明已逐条补 `"category": "files"`（归「文件与代码」组）+ 版本 bump 1.8.2 + CHANGELOG 补段；中文**显示名**仍无通道（前端 i18n catalog 表仅 33 个内置工具，插件工具渲染代码显式走 `s.name` 原名分支）
 
 ### 工具 Schema 生成机制
 QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()` 自动生成：
@@ -189,7 +197,7 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
 
-**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②泰斗先生的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④~~v1.4.0 收口句待 commit+重装定稿~~ ✅（`412eebb`+`2625fbc`，装机 1.4.0，四轮盲测已实证收口句）。后续见 v1.5.0 节。
+**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②作者的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④~~v1.4.0 收口句待 commit+重装定稿~~ ✅（`412eebb`+`2625fbc`，装机 1.4.0，四轮盲测已实证收口句）。后续见 v1.5.0 节。
 
 ---
 
@@ -197,7 +205,7 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 **一日四连版本链**：v1.3.1（条目化文案）→ v1.3.2（输出预告，后被极简掉）→ v1.3.3（幽灵版，并入 1.4.0）→ v1.4.0（定稿候选）。
 
-**文档哲学转向（泰斗先生拍板，最重要决策）**：极简直觉化——agent 自带 ls/glob/gitignore 世界知识，docstring 每参数一句级、示例形态代替文字规则、边界由运行时输出（行内警告/统计行/中文报错）自解释。listdir 文档 2340→622 字符（-73%）。**三轮零上下文盲测实证成功**：8/10→8/10→8.5/10，最终 6/6 一次通过零试错，gitignore 直觉题（排树留同名文件）新人凭题目外的世界经验自创正解。方法论全文见小窝知识库《Agent工具文档设计与盲测验证》。
+**文档哲学转向（作者拍板，最重要决策）**：极简直觉化——agent 自带 ls/glob/gitignore 世界知识，docstring 每参数一句级、示例形态代替文字规则、边界由运行时输出（行内警告/统计行/中文报错）自解释。listdir 文档 2340→622 字符（-73%）。**三轮零上下文盲测实证成功**：8/10→8/10→8.5/10，最终 6/6 一次通过零试错，gitignore 直觉题（排树留同名文件）新人凭题目外的世界经验自创正解。方法论全文见小窝知识库《Agent工具文档设计与盲测验证》。
 
 **防退化三钉**：
 1. `test_docstring_minimal_contract`：8 必留词 + 7 禁回流词（所见即所搜/先校验/祖先链等注意事项类禁止再堆回 docstring）
@@ -291,7 +299,7 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 
 ## v1.8.0 read_lines 输出格式升级（2026-09-12，作者拍板三件套）
 
-**改动**：①**图例头**——`show_line_number=True` 时输出顶部加 `行号 > 行内容` + 空行（动机：泰斗先生实测**多个 LLM 把 `N > 内容` 前缀误读为文件自带行号**，图例让格式自解释；False 模式/空文件不加，空文件恒空串）；②**截断协议**——`<<truncated>>` → `<<<TRUNCATED>>>`（行尾粘标记 + 4096 行内上限标记同步升格），尾部说明改 `\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。…`（空行分隔内容区/元信息区、说明行以标记开头；对齐 agentscope 生态大写惯例——长时记忆中间件 `<<<TRUNCATED>>>` 为家族唯一先例；**查证事实：内置 agentscope Read 无总预算无尾部提示**，`{i:6d}\t{content}` + 超长行 `[truncated]`）；③**max_chars 默认 2048→5000**（2048 实测连续触发续读 round-trip，5000≈2k token 克制）。
+**改动**：①**图例头**——`show_line_number=True` 时输出顶部加 `行号 > 行内容` + 空行（动机：作者实测**多个 LLM 把 `N > 内容` 前缀误读为文件自带行号**，图例让格式自解释；False 模式/空文件不加，空文件恒空串）；②**截断协议**——`<<truncated>>` → `<<<TRUNCATED>>>`（行尾粘标记 + 4096 行内上限标记同步升格），尾部说明改 `\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。…`（空行分隔内容区/元信息区、说明行以标记开头；对齐 agentscope 生态大写惯例——长时记忆中间件 `<<<TRUNCATED>>>` 为家族唯一先例；**查证事实：内置 agentscope Read 无总预算无尾部提示**，`{i:6d}\t{content}` + 超长行 `[truncated]`）；③**max_chars 默认 2048→5000**（2048 实测连续触发续读 round-trip，5000≈2k token 克制）。
 
 **范围纪律**：仅动 `file_tools_read_lines`。read_block（同款旧文案旧标记）与 regex/utils 共享助手的 `<<truncated>>` 不跟随，另案。元信息（图例/尾部说明）后拼接不占 max_chars 预算（与 v1.7.0 尾部说明口径一致）。
 
@@ -310,6 +318,6 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 **踩坑（承前编号）**：
 9. **图例行 + 空行 = split 后第二元素是空串**：钉 `lines[1]` 时想当然以为紧跟内容行；strip().split("\n") 后图例、空行、内容各占一行，空行本身就是一行元素（第一版钉错被测试当场逮住）。
 
-**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后小音联机 5 场景全绿）；③~~read_block + diff 联机冒烟~~ ✅（2026-09-13 凌晨作者重装后联机 9/9 全绿：read_block 3 发（图例/截断新协议/无图例）+ diff 6 发（行尾序号头/跳跃装填名片b+后续展开/行长截断+汇总/count=1部分展开/CRLF-LF行尾提示/修正数据后名片b复验））；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
+**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后联机 5 场景全绿）；③~~read_block + diff 联机冒烟~~ ✅（2026-09-13 凌晨作者重装后联机 9/9 全绿：read_block 3 发（图例/截断新协议/无图例）+ diff 6 发（行尾序号头/跳跃装填名片b+后续展开/行长截断+汇总/count=1部分展开/CRLF-LF行尾提示/修正数据后名片b复验））；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
 
 > **新会话续接口令（收工态 v1.8.0）**：五批改动全部落地——read_lines 三件套（已 commit=`4a6ac6d`+联机 5 场景）+ read_block 批 + diff/常量批 + 死常量清扫批 + diff 折叠重设计批（8 文件增量待作者 commit）；复审闭环（FAIL→修复全过）+ 联机 14 场景全绿。无代码挂账。观察项：图例矫治 LLM 误读的日常效果、read_block 行级折叠否决后若需部分视野再议。

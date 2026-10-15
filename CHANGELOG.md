@@ -1,9 +1,28 @@
 # 更新日志
 
+## v1.8.2 (2026-10-16)
+
+### meta.tools 补 category 字段：插件工具归入「文件与代码」分组
+
+- **背景**：QwenPaw 2.2.2 工具管理页的分组机制——内置工具查前端硬编码表，**插件工具走后端 `ToolInfo.category`**（`_build_tool_info` 从 manifest `meta.tools` 条目读 `category` 字段，routers/tools.py），前端按 6 个预定义组名匹配（files/web/media/agents/runtime/migration），未命中落「未分类」；自创组名无效
+- **修复**：27 条 meta.tools 声明逐条补 `"category": "files"`，全部归入「文件与代码」组（此前缺省 → 全家躺在「未分类」）
+- **注意**：`register_tool` 的 `tool_type="file"` 参数与此无关（仅进 governance 白名单），UI 分组唯一通道是 manifest `meta.tools[].category`
+- 无代码改动，纯 manifest 元数据补充；随 v1.8.1 的 meta.tools 声明同属 UI 可见性系列修复
+
+## v1.8.1 (2026-10-15)
+
+### plugin.json 补 meta.tools 声明：修复插件工具在非 default agent 的 UI 隐身
+
+- **问题**：27 个工具在非 default agent（存量 agent）的 UI 工具管理页**完全不可见**（快照条目不存在，非禁用态）；default agent 可见纯属其配置快照里的历史遗留条目。运行时 ToolRegistry 注入不受影响——LLM 实际可调用，属于「UI 隐身但运行时可用」的迷惑型缺陷
+- **根因**：QwenPaw 中插件工具进入 agent 配置快照（`agent.json` → `tools.builtin_tools`）的唯一通道是 manifest `meta.tools` 声明（`_merge_plugin_manifest_tools`）；本插件此前从未声明，故任何 agent 的快照都不会出现本插件工具条目。UI 工具列表端点（`GET /tools`）只读配置快照、与运行时注册表无关，遂成两层皮
+- **修复**：plugin.json 补 `meta.tools`（27 工具逐个声明 name/description/icon，与 `register_tool` 参数一致；不声明 `enabled`——QwenPaw 2.2.1 会忽略该字段并硬编码 enabled=False，新条目一律禁用态）
+- **效果与边界**：新建 agent 生成配置时自动获得 27 条禁用态条目（UI 可见、可开启）；**存量 agent 受 QwenPaw `load_agent_config` 指纹缓存影响——agent.json 文件不变则配置对象永不重载，重启/卸载重装均无法补条目**，需直接编辑 agent.json 补齐（文件变化即触发缓存失效）
+- 无代码改动，纯 manifest 元数据修复；27 个声明名与 `plugin.py` 注册名双向校验一致
+
 ## v1.8.0 (2026-09-12)
 
 ### read_lines 输出格式升级：图例头 + 截断协议重构 + 默认预算 5000（作者拍板）
-- **图例头（动机：多模型实测误读）**：泰斗先生观察到多个 LLM 把 `N > 内容` 前缀误读为文件自带行号——`show_line_number=True` 时输出顶部加图例行 `行号 > 行内容` + 空行，让格式自解释；False 模式与空文件不加（空文件维持返回空串）
+- **图例头（动机：多模型实测误读）**：作者观察到多个 LLM 把 `N > 内容` 前缀误读为文件自带行号——`show_line_number=True` 时输出顶部加图例行 `行号 > 行内容` + 空行，让格式自解释；False 模式与空文件不加（空文件维持返回空串）
 - **截断协议对齐 agentscope 生态大写惯例**：`<<truncated>>` → `<<<TRUNCATED>>>`（行尾粘标记与 4096 行内上限标记同步升格）；尾部说明从「紧跟下一行 + 反引号包裹标记」改为「空行分隔 + 标记开头」：`\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。如需继续阅读，请从第 M 行开始读取（该行内容不完整，会重新返回完整内容）。\n`——内容区与元信息区结构性分离
 - **max_chars 默认 2048 → 5000**：2048 对源码文件偏小（实测连续触发续读 round-trip），5000 ≈ 2k token 依然克制；预算口径不变（图例/说明等元信息后拼接、不占预算，与 v1.7.0 尾部说明口径一致）
 - **范围纪律**：仅动 `file_tools_read_lines`（read_block 同日追加跟随，见下）；regex/utils 的 `<<truncated>>`（diff 等共享）不跟随

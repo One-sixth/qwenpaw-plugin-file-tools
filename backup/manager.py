@@ -119,6 +119,7 @@ def backup_file(path: str) -> Optional[int]:
     _update_files_json(backup_root, path, encoded)
 
     logger.info("已备份 %s → #%d", path, number)
+    _maybe_cleanup()
     return number
 
 
@@ -236,3 +237,34 @@ def cleanup_old_backups(days: int = 30) -> None:
 
     if total_removed > 0:
         logger.info("备份清理完成：共移除了 %d 个过期备份文件", total_removed)
+
+# ── 惰性清理触发 ──────────────────────────────────────────
+
+# 惰性清理最小间隔（秒）：24h 至多触发一次
+_CLEANUP_INTERVAL_SECONDS = 86400
+
+
+def _maybe_cleanup() -> None:
+    """备份成功后惰性触发过期备份清理（每 24h 至多一次）。
+
+    替代 v1.8.3 移除的启动钩子：启动阶段不在请求回合内，
+    ContextVar 未注入，get_session_dir() 必然失败（清理静默死亡）。
+    本函数在请求回合内被调用，ContextVar 已注入，工作区可靠可用。
+    清理失败只记 warning，不影响备份主流程。
+    """
+    try:
+        marker = os.path.join(get_session_dir(), ".last_cleanup")
+        now = datetime.now().timestamp()
+        if os.path.isfile(marker):
+            try:
+                with open(marker, "r", encoding="utf-8") as f:
+                    last = float(f.read().strip())
+                if now - last < _CLEANUP_INTERVAL_SECONDS:
+                    return
+            except (ValueError, OSError):
+                pass  # 时间戳损坏/不可读 → 视为需要清理
+        cleanup_old_backups(days=30)
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(str(now))
+    except Exception as e:
+        logger.warning("惰性清理旧备份失败（不影响本次备份）: %s", e)

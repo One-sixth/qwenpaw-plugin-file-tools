@@ -1,5 +1,18 @@
 # 更新日志
 
+## v1.8.3 (2026-10-17)
+
+### 多 agent 工作区解析修复：相对路径接入 QwenPaw ContextVar（智能体工作区）
+
+- **问题**：多 agent 环境下所有 agent 的相对路径都解析到 default agent 的工作区——`get_workspace_dir()` 旧实现读全局配置并硬编码 `profiles["default"]`，完全不知道当前调用来自哪个 agent；顺带每次工具调用都 `load_config()` 全量读盘，性能浪费
+- **修复（用户文件路径基准）**：`get_workspace_dir()` 直连 QwenPaw 官方 `qwenpaw.config.context.get_tool_base_dir()`——每回合由 `ContextVarsSetupHook` 注入 ContextVar，解析优先级「项目目录（聊天界面绑定）→ agent 工作区 → 全局 WORKING_DIR」，与内置 file/shell 工具语义一致；聊天界面切换「智能体工作区」后相对路径即跟随
+- **修复（备份小窝拆分）**：`get_session_dir()`（file_tools_data 历史备份根）改用 `get_current_workspace_dir()`——备份等 agent 状态固定存放在 agent 自己的工作区（小窝），**不跟随**聊天界面绑定的项目目录，避免写进用户项目（对齐 QwenPaw「agent state never lands inside a user's project」原则）
+- **兜底链移除（作者拍板）**：旧实现的 tool_config workspace_dir 覆盖分支 + load_config profiles 兜底分支全部删除，出错直接抛不静默；测试环境路径注入由 conftest 的 `_mock_workspace_dirs` fixture 专用承担（mock `get_workspace_dir` → tmp_dir，原有 `get_session_dir` mock 保留）
+- **修复（复查 MAJOR-1：启动清理静默死亡）**：无上下文对抗复查发现 30 天备份自动清理功能回归——startup hook 在应用启动阶段执行（请求回合外），ContextVar 未注入 → get_session_dir() 必抛 RuntimeError → cleanup_old_backups 捕获后静默跳过。修复：移除启动钩子，改为备份成功后惰性触发（`_maybe_cleanup`：读 file_tools_data/.last_cleanup 时间戳，24h 至多一次；请求回合内 ContextVar 已注入，天然可靠；清理失败只 warning 不影响备份）
+- **修复（复查 MAJOR-2：宿主版本下限过宽）**：qwenpaw_version.min 2.0.0 → 2.2.2——v1.8.3 依赖的 `get_tool_base_dir` 实际于 QwenPaw 2.2.0 引入，且全部特性仅在 2.2.2 实测；旧声明会导致 2.0.0~2.1.x 宿主上 27 个工具 ImportError 静默瘫痪
+- **升级注意（复查 MINOR-3）**：bug 时期（≤1.8.2）非 default agent 的历史备份被写进了 default agent 工作区的 file_tools_data/history/，且备份键指向从未存在的路径，无法程序化迁移——如需找回请到 default agent 工作区人工翻查（files.json 有原始路径映射）；default agent 跨版本无损
+- 测试 628 全绿（新增 5 个真实函数体测试钉）；⚠️ 升级后 tool_config 中 `file_tools_listdir.workspace_dir` 配置项不再生效（v1.0 遗留隐藏配置，无已知使用）
+
 ## v1.8.2 (2026-10-16)
 
 ### meta.tools 补 category 字段：插件工具归入「文件与代码」分组

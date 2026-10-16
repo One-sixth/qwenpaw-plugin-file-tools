@@ -55,6 +55,12 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 - 写回翻译前须 `content.replace("\r\n","\n")` 折叠（防 strict 拆行/用户 content 带入的 `\r\n` 二次翻译叠成 `\r\r\n`）；目标显式 `\n` 不翻译故豁免——v1.7.0 起此守卫**上移到 `_write_file` 中央**（`newline != "\n"` 才折叠，幂等），copy_lines 本地同条件折叠保留成双保险；副产物：replace/regex_replace 的 new_text/replacement 直通道（不过 normalize_newlines）自此不再能叠出 `\r\r\n`，"写回自动统一"的 docstring 承诺首次成立；POSIX 反向失真（CRLF 文件被误转 LF）同修
 - 配方与实验事实包：小窝知识库《编程技巧速查》§20
 
+### 工作区解析（v1.8.3 重构，2026-10-17）
+- **用户文件路径**：`get_workspace_dir()` → QwenPaw 官方 `qwenpaw.config.context.get_tool_base_dir()`（解析优先级：项目目录 → agent 工作区 → WORKING_DIR；ContextVar 每回合由 `ContextVarsSetupHook` 注入，同步工具经 `asyncio.to_thread` 自动携带 context 副本）。旧实现硬编码 `profiles["default"]` 是多 agent 相对路径全落 default 工作区的根因，已删
+- **备份小窝**：`get_session_dir()` → `get_current_workspace_dir()`（agent 自己的工作区）；file_tools_data 永不跟随聊天界面绑定的项目目录（防 agent 状态写进用户项目）
+- **无兜底链（作者拍板）**：运行时不做 load_config/tool_config 兜底，出错即抛；测试路径注入走 conftest `_mock_workspace_dirs`（mock 模块级 `get_workspace_dir`→tmp_dir + `get_session_dir` 值绑定仅 backup/manager.py 一处）
+- **复查修正（2026-10-17 无上下文对抗复查，FAIL→修复全过）**：①startup hook 清理在回合外必失败（ContextVar 未注入 → RuntimeError 被吞）→ 移除启动钩子，改备份成功后惰性清理（`_maybe_cleanup` + .last_cleanup 时间戳 24h 限频，请求回合内天然可靠）；②plugin.json min 2.0.0→2.2.2（`get_tool_base_dir` 2.2.0 引入，实测边界 2.2.2，旧声明致低版本宿主全工具 ImportError 静默瘫痪）；③conftest 死补丁清理 + monkeypatch.setattr 规范化；④新增 test_workspace_context.py 5 钉（模块导入期保存原函数引用绕过 autouse mock，直接测真实函数体 + ContextVar token reset 防污染）
+
 ### 测试配置
 - 保留 `conftest.py` 手动 `sys.path.insert(0, _project_root)`，不加 `pyproject.toml`
 - ⚠️ **pytest 和 `show_tool_schema.py` 都必须用 `qwenpaw` conda 环境**（`D:\Software\miniconda3\envs\qwenpaw\python.exe`）——依赖 agentscope，`normal` 环境没有会全量报错；全量测试现 401 个

@@ -25,37 +25,16 @@ LINE_CONTENT_TRUNCATE = 160
 # ── 路径标准化 ─────────────────────────────────────────────
 
 
-def get_workspace_dir() -> Optional[str]:
-    """获取QwenPaw默认工作区目录。
+def get_workspace_dir() -> str:
+    """获取用户文件路径的基准目录（智能体工作区）。
 
-    优先用 tool_config 中配置的路径，兜底从 agent 配置读取。
+    经 QwenPaw 每回合注入的 ContextVar 解析：
+    项目目录（聊天界面绑定）→ agent 工作区 → 全局 WORKING_DIR。
+    与 QwenPaw 内置 file/shell 工具语义一致。
     """
-    try:
-        from qwenpaw.plugins.api import get_tool_config
+    from qwenpaw.config.context import get_tool_base_dir
 
-        config = get_tool_config("file_tools_listdir")
-        if config and isinstance(config, dict):
-            ws = config.get("workspace_dir")
-            if ws:
-                return str(ws)
-    except Exception:
-        pass
-
-    try:
-        from qwenpaw.config.utils import load_config
-
-        cfg = load_config()
-        profiles = cfg.agents.profiles  # dict[str, AgentProfileRef]
-        if "default" in profiles:
-            ws = profiles["default"].workspace_dir
-            return str(Path(ws).expanduser().resolve())
-        if profiles:
-            first = next(iter(profiles.values()))
-            ws = first.workspace_dir
-            return str(Path(ws).expanduser().resolve())
-    except Exception:
-        pass
-    return None
+    return str(get_tool_base_dir())
 
 
 def resolve_path(path: str, workspace_dir: Optional[str] = None) -> str:
@@ -377,20 +356,26 @@ def guess_file_type(file_path: str) -> Dict[str, Any]:
 
 
 def get_session_dir() -> str:
-    """获取 file_tools 数据目录根路径（用于存放历史备份等数据）。
+    """获取 file_tools 数据目录根路径（agent 工作区内的 file_tools_data）。
+
+    历史备份等 agent 状态固定存放在 agent 自己的工作区（小窝），
+    不跟随聊天界面绑定的项目目录，避免写进用户项目。
 
     Returns:
         str: 数据目录根路径
 
     Raises:
-        RuntimeError: 无法获取工作区路径时抛出，附带联系维护者的提示
+        RuntimeError: QwenPaw 上下文未注入（agent 工作区未知）时抛出
     """
-    ws = get_workspace_dir()
-    if not ws:
+    from qwenpaw.config.context import get_current_workspace_dir
+
+    ws = get_current_workspace_dir()
+    if ws is None:
         raise RuntimeError(
-            "无法获取 QwenPaw 工作区目录路径，无法确定备份文件存放位置。"
+            "无法获取 agent 工作区目录（QwenPaw 上下文未注入），"
+            "无法确定备份文件存放位置。"
         )
-    return os.path.join(ws, "file_tools_data")
+    return os.path.join(str(ws), "file_tools_data")
 
 
 # ── 路径编码（用于历史备份） ─────────────────────────────

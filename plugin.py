@@ -7,7 +7,6 @@
 import logging
 
 from qwenpaw.plugins.api import PluginApi
-from .backup.manager import cleanup_old_backups
 
 from .tools.info import (
     file_tools_listdir,
@@ -314,21 +313,7 @@ class FileToolsPlugin:
         )
 
 
-        # ── 启动钩子：清理过期备份 ──
-        api.register_startup_hook(
-            "cleanup_old_backups",
-            self._startup_cleanup,
-            priority=90,
-        )
-
         logger.info("✓ File Tools 插件注册完成（27 个工具）")
-
-    def _startup_cleanup(self) -> None:
-        """启动时清理超过 30 天的旧备份文件。"""
-        try:
-            cleanup_old_backups(days=30)
-        except Exception as e:
-            logger.warning("启动清理备份时出错: %s", e)
 
 
 plugin = FileToolsPlugin()

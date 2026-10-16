@@ -20,31 +20,26 @@ if _project_root not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _mock_session_dir(monkeypatch: pytest.MonkeyPatch, tmp_dir: str) -> None:
-    """测试环境中 mock get_session_dir，使其返回临时目录下的路径。
+def _mock_workspace_dirs(monkeypatch: pytest.MonkeyPatch, tmp_dir: str) -> None:
+    """测试专用：注入路径解析基准（代替 QwenPaw ContextVar 注入）。
 
-    需要覆盖所有模块的导入绑定，因为各模块通过
-    ``from ..utils import get_session_dir`` 值绑定了引用。
+    覆盖两个模块级函数，使路径解析在测试中完全可控：
+    - ``get_workspace_dir``：用户文件相对路径基准 → tmp_dir
+      （resolve_path 在 utils 模块内部按名字查找，mock 本模块即可）
+    - ``get_session_dir``：备份/历史目录 → tmp_dir/_file_tools
+      （值绑定仅 backup/manager.py 一处，经 from ..utils import 绑定；
+      utils 内部引用为函数内按名查找，mock 本模块即可）
     """
     backup_root = os.path.join(tmp_dir, "_file_tools")
 
-    # 先导入各模块，让它们完成 import 绑定
     import utils as utils_mod
     import backup.manager
-    import tools.edit
-    import tools.info
-    import tools.history
-    import tools.write
-    import tools.bytes
 
-    # 覆盖每个模块的 get_session_dir 引用
-    utils_mod.get_session_dir = lambda: backup_root
-    backup.manager.get_session_dir = lambda: backup_root
-    tools.edit.get_session_dir = lambda: backup_root
-    tools.info.get_session_dir = lambda: backup_root
-    tools.history.get_session_dir = lambda: backup_root
-    tools.write.get_session_dir = lambda: backup_root
-    tools.bytes.get_session_dir = lambda: backup_root
+    # 用户文件路径基准：相对路径落在 tmp_dir
+    monkeypatch.setattr(utils_mod, "get_workspace_dir", lambda: tmp_dir)
+    # 备份/历史目录：落在 tmp_dir/_file_tools
+    monkeypatch.setattr(utils_mod, "get_session_dir", lambda: backup_root)
+    monkeypatch.setattr(backup.manager, "get_session_dir", lambda: backup_root)
 
 
 @pytest.fixture

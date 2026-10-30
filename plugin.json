@@ -8,10 +8,10 @@
   "entry": {
     "backend": "plugin.py"
   },
-  "dependencies": ["pytrash", "puremagic", "chardet"],
+  "dependencies": ["pytrash", "puremagic", "chardet", "pathspec"],
   "qwenpaw_version": {
     "min": "2.2.2",
-    "max": "2.3.0"
+    "max": "2.99.0"
   },
   "meta": {
     "tools": [

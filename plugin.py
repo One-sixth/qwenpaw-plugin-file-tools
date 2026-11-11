@@ -124,7 +124,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_regex",
             tool_func=file_tools_regex,
-            description="正则搜索文件内容，支持跨行匹配，返回 JSON。",
+            description="正则搜索文件内容，支持跨行匹配，返回表格（捕获组展平为每组一行）。",
             icon="🔎",
             tool_type="file",
             target_param="path",
@@ -180,7 +180,7 @@ class FileToolsPlugin:
         api.register_tool(
             tool_name="file_tools_regex_replace",
             tool_func=file_tools_regex_replace,
-            description="正则替换文件内容，支持跨行匹配（自动备份，支持 dry_run）。",
+            description="正则替换文件内容，支持跨行匹配（自动备份，dry_run 显示模拟 diff 预览）。",
             icon="✨",
             tool_type="file",
             target_param="path",

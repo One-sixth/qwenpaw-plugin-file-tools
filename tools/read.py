@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import re as re_module
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     from ..utils import (
@@ -264,18 +264,20 @@ def file_tools_regex(
     end_line: Optional[Union[int, str]] = None,
     start: Union[int, str] = 1,
     count: Union[int, str] = 10,
+    max_chars: Union[int, str] = 5000,
     encoding: str = "auto",
 ) -> str:
-    """在文件内容中搜索正则表达式，支持跨行匹配，返回 JSON 格式。拼接指定行范围后整体用 finditer 匹配，因此正则可以跨行。matched 字段自动根据捕获组数量决定：0 组=完整匹配串，1 组=提取内容，2+组=列表。超过 250 字符的匹配内容会被截断并附带 note 字段提示。
+    """在文件内容中搜索正则表达式，返回表格（序号 | 行号,列号 | [组 |] 匹配内容）。跨行匹配在 pattern 内写 \\n。有捕获组时匹配内容列显示组内容（单组=组文本，多组=每组一行）。
 
     Args:
         path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
-        pattern: 正则表达式，Python re 语法。支持跨行匹配（拼接行范围后整体用 finditer 匹配）。不能为空。
-        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件总行数时报错。支持整数或十进制数字字符串。
-        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
-        start: 从第几个匹配开始显示，1-based。默认 1。最小值为 1。支持整数或十进制数字字符串。
-        count: 最多返回多少个匹配。默认 10。传 -1 返回所有匹配，传 0 报错。支持整数或十进制数字字符串。
-        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
+        pattern: 正则表达式。^/$ 按行（每行首尾），整段绝对首尾用 \\A/\\Z。
+        start_line: 搜索起始行号，1-based，包含。
+        end_line: 搜索结束行号，1-based，包含。None=文件末尾。
+        start: 从第几行结果开始显示（不是第几个匹配），1-based。
+        count: 最多返回多少行结果。-1=全部。
+        max_chars: 返回内容总字符上限。
+        encoding: 文件编码。
     """
     import bisect
 
@@ -293,6 +295,9 @@ def file_tools_regex(
     count, err = parse_int(count, "count")
     if err:
         return make_error("正则匹配", err)
+    max_chars, err = parse_int(max_chars, "max_chars")
+    if err:
+        return make_error("正则匹配", err)
 
     if not os.path.isfile(resolved):
         return make_error(
@@ -304,7 +309,7 @@ def file_tools_regex(
         return make_error("正则匹配", "pattern 不能为空字符串。请传入有效的正则表达式。")
 
     try:
-        compiled = re_module.compile(pattern)
+        compiled = re_module.compile(pattern, re_module.MULTILINE)
     except re_module.error as e:
         return make_error("正则匹配", f"正则表达式语法错误：{e}")
 
@@ -316,12 +321,12 @@ def file_tools_regex(
     # ── 参数校验 ──────────────────────────────────────────
 
     if start < 1:
-        return make_error("正则匹配", f"start 参数值 {start} 不合法。start 表示「从第几个匹配开始显示」，最小值为 1。")
+        return make_error("正则匹配", f"start 参数值 {start} 不合法。start 表示「从第几行结果开始显示」，最小值为 1。")
 
     if count == 0:
-        return make_error("正则匹配", "count 参数值 0 不合法。count=-1 表示返回所有匹配，count>=1 表示返回指定数量。")
+        return make_error("正则匹配", "count 参数值 0 不合法。count=-1 表示返回所有行，count>=1 表示返回指定行数。")
     if count < -1:
-        return make_error("正则匹配", f"count 参数值 {count} 不合法。负数值仅支持 -1（返回所有匹配）。")
+        return make_error("正则匹配", f"count 参数值 {count} 不合法。负数值仅支持 -1（返回所有行）。")
 
     total_lines = len(lines)
 
@@ -337,9 +342,6 @@ def file_tools_regex(
     actual_start = start_line - 1
     actual_end = min(end_line or total_lines, total_lines)
 
-    if actual_start >= total_lines:
-        return make_success(json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False))
-
     # 拼接行范围（跨行匹配）
     range_lines = lines[actual_start:actual_end]
     range_content = "\n".join(range_lines)
@@ -349,83 +351,110 @@ def file_tools_regex(
     for l in range_lines:
         line_offsets.append(line_offsets[-1] + len(l) + 1)  # +1 for \n
 
-    def _pos_to_line(pos: int) -> int:
-        """将 range_content 中的字符位置映射到原始文件行号。"""
+    def _pos_to_line_col(pos: int):
+        """将 range_content 中的字符位置映射为 (原始文件行号, 行内列号)，均 1-based。"""
         idx = bisect.bisect_right(line_offsets, pos) - 1
-        return actual_start + idx + 1  # 1-based
+        return actual_start + idx + 1, pos - line_offsets[idx] + 1
 
-    MATCHED_MAX = 250
-
-    def _truncate_matched(val):
-        """截断 matched 内容到 250 字符，超过加截断符。"""
-        if isinstance(val, str):
-            if len(val) > MATCHED_MAX:
-                return val[:MATCHED_MAX] + "<<truncated>>", True
-            return val, False
-        if isinstance(val, list):
-            truncated = False
-            result = []
-            for item in val:
-                if len(item) > MATCHED_MAX:
-                    result.append(item[:MATCHED_MAX] + "<<truncated>>")
-                    truncated = True
-                else:
-                    result.append(item)
-            return result, truncated
-        return val, False
-
-    # 收集所有匹配
-    all_matches: List[Dict[str, Any]] = []
-    any_truncated = False
-
-    for match in compiled.finditer(range_content):
-        start_pos = match.start()
-        end_pos = match.end()
-        line_start = _pos_to_line(start_pos)
-        line_end = _pos_to_line(end_pos - 1) if end_pos > start_pos else line_start
-
-        if line_start == line_end:
-            lines_str = str(line_start)
-        else:
-            lines_str = f"{line_start}~{line_end}"
-
-        # matched 字段：捕获组决定类型
-        group_count = len(match.groups())
-        if group_count == 0:
-            raw = match.group(0)
-        elif group_count == 1:
-            raw = match.group(1)
-        else:
-            raw = list(match.groups())
-
-        matched, truncated = _truncate_matched(raw)
-        if truncated:
-            any_truncated = True
-
-        all_matches.append({
-            "match": len(all_matches) + 1,
-            "lines": lines_str,
-            "matched": matched,
-        })
-
-    if not all_matches:
-        return make_success(json.dumps({"total_matches": 0, "matches": []}, indent=2, ensure_ascii=False))
-
-    # 分页
-    effective_count = len(all_matches) if count == -1 else count
-    page_start = start - 1
-    page_end = min(page_start + effective_count, len(all_matches))
-    page = all_matches[page_start:page_end]
-
-    result = {
-        "total_matches": len(all_matches),
-        "matches": page,
-    }
-
-    if any_truncated:
-        result["note"] = (
-            "部分匹配结果因内容过长已被截断（上限 250 字符）。"
-            "如需获取完整内容，请使用 file_tools_read_lines 或 file_tools_read_block 读取目标行。"
+    def _escape_cell(s: str) -> str:
+        """转义表格单元格：反斜杠/换行/制表符/竖线。多行匹配因此写成一行且不破坏表格。"""
+        return (
+            s.replace("\\", "\\\\")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+            .replace("\r", "\\r")
+            .replace("|", "\\|")
         )
 
-    return make_success(json.dumps(result, indent=2, ensure_ascii=False))
+    # ── 收集匹配并展平为行 ───────────────────────────────
+    # 每行 = (组号, 行号, 列号, 内容)；未参与匹配的组内容为 None
+    rows: List[Tuple[int, int, int, Optional[str]]] = []
+    for match in compiled.finditer(range_content):
+        group_count = len(match.groups())
+        if group_count == 0:
+            groups = [(0, match.group(0))]
+        elif group_count == 1:
+            groups = [(1, match.group(1))]
+        else:
+            groups = [(i, match.group(i)) for i in range(1, group_count + 1)]
+        for gno, gval in groups:
+            if gval is None:
+                rows.append((gno, 0, 0, None))
+            else:
+                line_no, col = _pos_to_line_col(match.start(gno))
+                rows.append((gno, line_no, col, gval))
+
+    # 组列显示策略：0 组或 1 组时隐藏（信息冗余），2+ 组时显示（区分各组）
+    # compiled.groups 是 int（捕获组数量，不含组0）
+    show_group = compiled.groups >= 2
+
+    total_rows = len(rows)
+    if total_rows == 0:
+        return make_success("共 0 个匹配。")
+
+    if start > total_rows:
+        return make_error("正则匹配", f"start 参数值 {start} 超出总行数（共 {total_rows} 行）。")
+
+    effective_count = total_rows if count == -1 else count
+    page_start = start - 1
+    page = rows[page_start:page_start + effective_count]
+
+    # ── 格式化结果行 ─────────────────────────────────────
+    ROW_MAX = 260  # 每行匹配内容上限（原始字符数）
+    MARKER = "<<<TRUNCATED>>>"
+
+    formatted: List[Tuple[str, bool]] = []  # (行文本, 是否内容截断)
+    for i, (gno, line_no, col, gval) in enumerate(page):
+        no = page_start + i + 1
+        if gval is None:
+            # 组未参与匹配（如 (a)|(b) 中未命中的组）
+            cell = "None"
+            pos_str = "-"
+            row_truncated = False
+        elif gval == "":
+            # 零宽匹配（空串）：显式显示 ""
+            cell = '""'
+            pos_str = f"{line_no},{col}"
+            row_truncated = False
+        else:
+            row_truncated = len(gval) > ROW_MAX
+            raw = gval[:ROW_MAX] if row_truncated else gval
+            cell = _escape_cell(raw)
+            pos_str = f"{line_no},{col}"
+        if show_group:
+            row_str = f"{no} | {pos_str} | {gno} | {cell}"
+        else:
+            row_str = f"{no} | {pos_str} | {cell}"
+        if row_truncated:
+            row_str += MARKER
+        formatted.append((row_str, row_truncated))
+
+    # 总字符预算：逐行累计，超出则整行停止（不输出半行，footer 提示用 start 继续）
+    out_lines: List[str] = []
+    char_count = 0
+    emitted = 0
+    char_truncated = False
+    for row_str, _ in formatted:
+        if emitted >= 1 and char_count + len(row_str) > max_chars:
+            char_truncated = True
+            break
+        out_lines.append(row_str)
+        char_count += len(row_str)
+        emitted += 1
+
+    any_row_truncated = any(t for _, t in formatted[:emitted])
+    page_end = page_start + emitted
+
+    # ── 页脚 ─────────────────────────────────────────────
+    footer: List[str] = []
+    if page_end < total_rows:
+        reason = f"，因为总字符超限 {max_chars}" if char_truncated else ""
+        footer.append(f"当前展示了 {start} → {page_end} 行（共 {total_rows} 行）{reason}。可以使用 start={page_end + 1} 查看后面的行。")
+    else:
+        footer.append(f"共 {total_rows} 行，已全部展示。")
+    if any_row_truncated:
+        footer.append(f"部分行因超过每行 {ROW_MAX} 字符上限被截断。")
+
+    header = "序号 | 行号,列号 | 组 | 匹配内容" if show_group else "序号 | 行号,列号 | 匹配内容"
+    result = header + "\n" + "\n".join(out_lines) + "\n\n" + "\n".join(footer)
+    return make_success(result)

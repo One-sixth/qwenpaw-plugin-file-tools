@@ -20,7 +20,7 @@ Github仓库：https://github.com/One-sixth/qwenpaw-plugin-file-tools
 |------|------|:--------:|
 | `file_tools_read_lines` | 按行读取文本文件（支持行号开关） | 纯文本 |
 | `file_tools_read_block` | 读取矩形块（行+列范围，观察窗口） | 纯文本 |
-| `file_tools_regex` | 正则匹配（支持跨行，捕获组提取） | JSON |
+| `file_tools_regex` | 正则匹配（支持跨行，捕获组展平为每组一行，表格格式） | 表格 |
 
 ### 文件修改类（自动备份）
 | 工具 | 功能 |
@@ -30,7 +30,7 @@ Github仓库：https://github.com/One-sixth/qwenpaw-plugin-file-tools
 | `file_tools_insert_lines` | 在指定行前插入内容 |
 | `file_tools_delete_lines` | 删除指定行区间 |
 | `file_tools_replace` | 查找替换（子串匹配，支持 dry_run） |
-| `file_tools_regex_replace` | 正则替换（支持跨行，支持 dry_run） |
+| `file_tools_regex_replace` | 正则替换（支持跨行，dry_run 显示模拟 diff 预览） |
 | `file_tools_indent_lines` | 调整行首缩进（expand/shrink），可以轻松调整代码段的缩进 |
 | `file_tools_copy_lines` | 跨文件/自复制行区间到指定落点（每个拆行元素皆真实行、末尾空行可拷；内容不经过上下文，新建连父目录） |
 | `file_tools_write` | 全量写入文件（原子写入，自动备份） |

@@ -1,7 +1,7 @@
 {
   "id": "qwenpaw-plugin-file-tools",
   "name": "QwenPaw增强文件工具",
-  "version": "1.8.4",
+  "version": "1.9.1",
   "type": "tool",
   "description": "补充 QwenPaw 缺失的文件操作能力：安全文件操作、行级编辑、文件信息、文本搜索、批量处理、历史回滚、回收站操作、字节级操作。",
   "author": "onesixth",
@@ -59,7 +59,7 @@
       },
       {
         "name": "file_tools_regex",
-        "description": "正则搜索文件内容，支持跨行匹配，返回 JSON。",
+        "description": "正则搜索文件内容，支持跨行匹配，返回表格（捕获组展平为每组一行）。",
         "icon": "🔎",
         "category": "files"
       },

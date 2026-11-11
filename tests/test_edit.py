@@ -150,31 +150,6 @@ class TestReplaceLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_mixed_whitespace(self, tmp_dir):
-        """混合缩进内容（tab+空格混合）应正确处理。"""
-        path = os.path.join(tmp_dir, "mixed.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\t  mixed\n  \tmixed2\nplain\n")
-        result = file_tools_indent_lines(path, mode="expand", count=2)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        assert lines[0].startswith("  ")
-        assert lines[2].startswith("  ")
-
-    def test_shrink_partial(self, tmp_dir):
-        """shrink 模式删除的空白数不超过行首实际空白数。"""
-        path = os.path.join(tmp_dir, "partial.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("  3spaces\n\t1tab\n       8spaces\n")
-        result = file_tools_indent_lines(path, mode="shrink", count=4)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
-        assert lines[0] == "3spaces"
-        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
-        assert lines[1] == "1tab"
-        # "       8spaces" → 删4个空格，变成"   8spaces"
-        assert lines[2] == "   8spaces"
 
     def test_boundary_start(self, multi_line_file):
         result = file_tools_replace_lines(multi_line_file, 1, 1, "first")
@@ -263,31 +238,6 @@ class TestInsertLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_mixed_whitespace(self, tmp_dir):
-        """混合缩进内容（tab+空格混合）应正确处理。"""
-        path = os.path.join(tmp_dir, "mixed.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\t  mixed\n  \tmixed2\nplain\n")
-        result = file_tools_indent_lines(path, mode="expand", count=2)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        assert lines[0].startswith("  ")
-        assert lines[2].startswith("  ")
-
-    def test_shrink_partial(self, tmp_dir):
-        """shrink 模式删除的空白数不超过行首实际空白数。"""
-        path = os.path.join(tmp_dir, "partial.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("  3spaces\n\t1tab\n       8spaces\n")
-        result = file_tools_indent_lines(path, mode="shrink", count=4)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
-        assert lines[0] == "3spaces"
-        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
-        assert lines[1] == "1tab"
-        # "       8spaces" → 删4个空格，变成"   8spaces"
-        assert lines[2] == "   8spaces"
 
     def test_line_separator_unix(self, multi_line_file):
         """line_separator=\\n 输出 Unix 换行。"""
@@ -353,31 +303,6 @@ class TestDeleteLines:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_mixed_whitespace(self, tmp_dir):
-        """混合缩进内容（tab+空格混合）应正确处理。"""
-        path = os.path.join(tmp_dir, "mixed.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\t  mixed\n  \tmixed2\nplain\n")
-        result = file_tools_indent_lines(path, mode="expand", count=2)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        assert lines[0].startswith("  ")
-        assert lines[2].startswith("  ")
-
-    def test_shrink_partial(self, tmp_dir):
-        """shrink 模式删除的空白数不超过行首实际空白数。"""
-        path = os.path.join(tmp_dir, "partial.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("  3spaces\n\t1tab\n       8spaces\n")
-        result = file_tools_indent_lines(path, mode="shrink", count=4)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
-        assert lines[0] == "3spaces"
-        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
-        assert lines[1] == "1tab"
-        # "       8spaces" → 删4个空格，变成"   8spaces"
-        assert lines[2] == "   8spaces"
 
     def test_line_separator_unix(self, multi_line_file):
         """line_separator=\\n 输出 Unix 换行（删除后剩余行之间用 \\n 连接）。"""
@@ -456,31 +381,6 @@ class TestReplace:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_mixed_whitespace(self, tmp_dir):
-        """混合缩进内容（tab+空格混合）应正确处理。"""
-        path = os.path.join(tmp_dir, "mixed.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\t  mixed\n  \tmixed2\nplain\n")
-        result = file_tools_indent_lines(path, mode="expand", count=2)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        assert lines[0].startswith("  ")
-        assert lines[2].startswith("  ")
-
-    def test_shrink_partial(self, tmp_dir):
-        """shrink 模式删除的空白数不超过行首实际空白数。"""
-        path = os.path.join(tmp_dir, "partial.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("  3spaces\n\t1tab\n       8spaces\n")
-        result = file_tools_indent_lines(path, mode="shrink", count=4)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
-        assert lines[0] == "3spaces"
-        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
-        assert lines[1] == "1tab"
-        # "       8spaces" → 删4个空格，变成"   8spaces"
-        assert lines[2] == "   8spaces"
 
     def test_case_sensitive(self, multi_line_file):
         result = file_tools_replace(multi_line_file, "LINE", "X")
@@ -581,7 +481,44 @@ class TestRegexReplace:
         result = file_tools_regex_replace(multi_line_file, r"line\d+", "ITEM", dry_run=True)
         assert "dry_run" in result.content[0].text
         assert "模拟替换" in result.content[0].text
+        # dry_run 现在显示 diff 预览
+        assert "-line1" in result.content[0].text
+        assert "+ITEM" in result.content[0].text
         assert _read_file(multi_line_file) == original
+
+    def test_dry_run_diff_cross_line(self, multi_line_file):
+        """跨行合并：dry_run diff 显示行数变化（20→19）。"""
+        result = file_tools_regex_replace(
+            multi_line_file, r"line1\nline2", "line12", dry_run=True
+        )
+        text = result.content[0].text
+        assert "dry_run" in text
+        assert "文件从 20 行变为 19 行" in text
+        assert "-line1" in text
+        assert "-line2" in text
+        assert "+line12" in text
+
+    def test_dry_run_max_chars_truncation(self, multi_line_file):
+        """max_chars 超限时按 hunk 边界截断，footer 列出被省略 hunk 的 @@ 头。"""
+        result = file_tools_regex_replace(
+            multi_line_file, r"line1|line20", "ITEM",
+            count=-1, dry_run=True, max_chars=100,
+        )
+        text = result.content[0].text
+        assert "<<<TRUNCATED>>>" in text
+        assert "省略" in text                # 新 footer 特征
+        assert "完整 diff 请用" not in text   # 旧死路指引已移除
+        assert "file_tools_diff" not in text  # 死路工具指引已移除
+        assert "-line20" not in text          # 截掉的 hunk 整块不出
+
+    def test_dry_run_no_change(self, multi_line_file):
+        """替换后内容不变 → diff 显示无差异。"""
+        result = file_tools_regex_replace(
+            multi_line_file, r"line1", "line1", dry_run=True
+        )
+        text = result.content[0].text
+        assert "dry_run" in text
+        assert "（无差异）" in text
 
     def test_nonexistent_file(self, tmp_dir):
         path = os.path.join(tmp_dir, "nonexist.txt")
@@ -625,31 +562,6 @@ class TestRegexReplace:
         history = list_history(multi_line_file)
         assert len(history) == 1
 
-    def test_mixed_whitespace(self, tmp_dir):
-        """混合缩进内容（tab+空格混合）应正确处理。"""
-        path = os.path.join(tmp_dir, "mixed.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\t  mixed\n  \tmixed2\nplain\n")
-        result = file_tools_indent_lines(path, mode="expand", count=2)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        assert lines[0].startswith("  ")
-        assert lines[2].startswith("  ")
-
-    def test_shrink_partial(self, tmp_dir):
-        """shrink 模式删除的空白数不超过行首实际空白数。"""
-        path = os.path.join(tmp_dir, "partial.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("  3spaces\n\t1tab\n       8spaces\n")
-        result = file_tools_indent_lines(path, mode="shrink", count=4)
-        assert "成功缩进" in result.content[0].text
-        lines = _read_lines(path)
-        # "  3spaces" → 删3个空格（只有3个），变成"3spaces"
-        assert lines[0] == "3spaces"
-        # "\t1tab" → 删1个tab（只有1个），变成"1tab"
-        assert lines[1] == "1tab"
-        # "       8spaces" → 删4个空格，变成"   8spaces"
-        assert lines[2] == "   8spaces"
 
     def test_start_lt_1(self, multi_line_file):
         """start<1 应报错"""
@@ -755,6 +667,165 @@ class TestRegexReplace:
         lines = _read_lines(multi_line_file)
         assert all("line" not in l for l in lines)  # "line" 被移除，只剩数字
         assert lines[0] == "1"
+
+    # ── v1.9.1 dry_run diff 预览 + max_chars 截断（复审补缺口）────────
+
+    def _diff_len(self, path, **kwargs):
+        """用大 max_chars 跑一次 dry_run，返回 diff 部分（--- original 起）的字符数。"""
+        r = file_tools_regex_replace(path, max_chars=999999, dry_run=True, **kwargs)
+        text = r.content[0].text
+        idx = text.index("--- original")
+        return len(text) - idx
+
+    def test_non_dry_run_diff(self, multi_line_file):
+        """非 dry_run 路径也输出 diff（v1.9.1 两路径共用 diff_text）。"""
+        result = file_tools_regex_replace(multi_line_file, r"line(\d+)", r"NUM\1")
+        text = result.content[0].text
+        assert "成功替换" in text
+        assert "-line1" in text
+        assert "+NUM1" in text
+        assert "文件从 20 行变为 20 行" in text
+
+    def test_max_chars_boundary(self, multi_line_file):
+        """max_chars 恰好不截断 / 恰好截断 边界（复审 HIGH-2）。"""
+        kwargs = dict(pattern=r"line1|line20", replacement="ITEM", count=-1)
+        diff_len = self._diff_len(multi_line_file, **kwargs)
+        # 预算口径 len(l)+1 比 "\n".join 输出长恰好 1（n 行：预算 n 个换行，join 用 n-1 个）
+        # 故不截断边界 = diff_len + 1
+        r = file_tools_regex_replace(multi_line_file, max_chars=diff_len + 1, dry_run=True, **kwargs)
+        assert "<<<TRUNCATED>>>" not in r.content[0].text
+        # 恰好截断：少 1 字符即触发
+        r = file_tools_regex_replace(multi_line_file, max_chars=diff_len, dry_run=True, **kwargs)
+        assert "<<<TRUNCATED>>>" in r.content[0].text
+
+    def test_max_chars_minimal_at_least_one_hunk(self, multi_line_file):
+        """max_chars 极小时至少输出 1 个 hunk（守卫不变量，复审 HIGH-2）。"""
+        r = file_tools_regex_replace(
+            multi_line_file, r"line1|line20", "ITEM",
+            count=-1, dry_run=True, max_chars=10,
+        )
+        text = r.content[0].text
+        assert "-line1" in text          # 首 hunk 必出
+        assert "<<<TRUNCATED>>>" in text  # 第二 hunk 被挡
+        assert "-line20" not in text      # 截掉的 hunk 整块不出（复审 MEDIUM-3）
+
+    def test_truncated_footer_lists_hunk_heads(self):
+        """截断 footer 列出被省略 hunk 的 @@ 头，>10 个时折叠（列前 10）。"""
+        import re
+        from tools.edit import _diff_truncated
+        original, modified = [], []
+        for i in range(40):
+            original += ["x", "x", "x"]
+            modified += ["x", "x", "x"]
+            original.append(f"MARK{i}")
+            modified.append(f"CHANGED{i}")
+        text = _diff_truncated(original, modified, max_chars=500)
+        assert "<<<TRUNCATED>>>" in text
+        assert "（列前 10）" in text
+        footer = text.split("<<<TRUNCATED>>>", 1)[1]
+        assert len(re.findall(r"@@ -\d+", footer)) == 10  # footer 固定列 10 个 hunk 头
+        m = re.search(r"省略 (\d+) 个差异块", text)
+        assert m and int(m.group(1)) == 29  # 该构造（x×3+MARK/CHANGED，40 hunk，mc=500）下实测省略 29（锚定 N 精确值，off-by-one 报警）
+
+    def test_footer_fold_boundary(self):
+        """折叠边界：省略恰好 10 个全列（无折叠）、11 个折叠（列前 10）。"""
+        import re
+        from tools.edit import _diff_truncated
+        def gen(n):
+            o, m = [], []
+            for i in range(n):
+                o += ["a", "b", "c"]; m += ["a", "b", "c"]
+                o.append(f"M{i}"); m.append(f"C{i}")
+            return o, m
+        # 省略恰好 10 个 → 全列，无「（列前 10）」
+        t = _diff_truncated(*gen(11), max_chars=50)
+        assert "<<<TRUNCATED>>>" in t
+        assert "（列前 10）" not in t
+        assert re.search(r"省略 10 个差异块：", t)
+        assert len(re.findall(r"@@ -\d+", t.split("<<<TRUNCATED>>>", 1)[1])) == 10
+        # 省略 11 个 → 折叠，列前 10
+        t = _diff_truncated(*gen(12), max_chars=50)
+        assert "（列前 10）" in t
+        assert re.search(r"省略 11 个差异块（列前 10）：", t)
+        assert len(re.findall(r"@@ -\d+", t.split("<<<TRUNCATED>>>", 1)[1])) == 10
+
+    def test_single_hunk_over_budget_full_output(self):
+        """单 hunk 超预算：完整输出、无 TRUNCATED footer（至少 1 个 hunk 守卫不变量）。"""
+        from tools.edit import _diff_truncated
+        o = [f"line{i}" for i in range(50)]
+        m = [l + "x" for l in o]
+        t = _diff_truncated(o, m, max_chars=100)
+        assert "<<<TRUNCATED>>>" not in t        # 单 hunk 不截断
+        assert "line49x" in t                     # 末行也在，hunk 未拆半
+
+    def test_non_dry_run_truncated_footer(self, multi_line_file):
+        """非 dry_run 路径截断时也输出同款 footer（两路径共用 diff_text）。"""
+        r = file_tools_regex_replace(
+            multi_line_file, r"line1|line20", "ITEM",
+            count=-1, max_chars=100,               # dry_run=False
+        )
+        text = r.content[0].text
+        assert "成功替换" in text
+        assert "<<<TRUNCATED>>>" in text
+        assert "省略" in text
+
+    def test_max_chars_invalid(self, multi_line_file):
+        """max_chars 下限校验：0 / 负数报错，字符串可解析。"""
+        r = file_tools_regex_replace(multi_line_file, r"line1", "X", dry_run=True, max_chars=0)
+        assert "失败" in r.content[0].text
+        r = file_tools_regex_replace(multi_line_file, r"line1", "X", dry_run=True, max_chars=-5)
+        assert "失败" in r.content[0].text
+        r = file_tools_regex_replace(multi_line_file, r"line1", "X", dry_run=True, max_chars="100")
+        assert "dry_run" in r.content[0].text
+
+    # ── MULTILINE：^/$ 按行匹配 ──────────────────────────────────
+
+    def test_regex_replace_multiline_anchor(self, multi_line_file):
+        """^/$ 按行匹配：^line2$ 匹配中间行（第 2 行），替换成功。"""
+        r = file_tools_regex_replace(multi_line_file, r"^line2$", "CHANGED", dry_run=True)
+        text = r.content[0].text
+        assert "匹配到 1 处" in text                # 只 1 处（不是 0 也不是 20）
+        assert "-line2" in text
+        assert "+CHANGED" in text
+
+    def test_regex_replace_multiline_cross_line(self, multi_line_file):
+        """跨行替换（pattern 内 \\n）不受 MULTILINE 影响。"""
+        # 替换 "line1\nline2" → "MERGED"（跨 2 行合并）
+        r = file_tools_regex_replace(multi_line_file, r"^line1\nline2$", "MERGED", dry_run=True)
+        text = r.content[0].text
+        assert "匹配到 1 处" in text
+        assert "文件从 20 行变为 19 行" in text      # 2 行合并成 1 行
+        assert "+MERGED" in text
+
+    def test_dry_run_start_count(self, multi_line_file):
+        """start/count 与 dry_run 交互：diff 只显示指定匹配的变更（复审 MEDIUM-4）。"""
+        r = file_tools_regex_replace(
+            multi_line_file, r"line(\d+)", r"X\1",
+            start=2, count=1, dry_run=True,
+        )
+        text = r.content[0].text
+        assert "-line2" in text and "+X2" in text
+        assert "-line1" not in text
+
+    def test_dry_run_line_increase(self, multi_line_file):
+        """行数增加方向（1→2 行，复审 MEDIUM-5）。"""
+        r = file_tools_regex_replace(
+            multi_line_file, r"line1", r"line1\nlineX", dry_run=True
+        )
+        text = r.content[0].text
+        assert "文件从 20 行变为 21 行" in text
+        # line1 本身未变（是上下文行），只有 lineX 是新增
+        assert "+lineX" in text
+        assert "-line1" not in text
+
+    def test_dry_run_backreference_expanded(self, multi_line_file):
+        """反向引用在 diff 中显示展开后的值（复审 MEDIUM-6）。"""
+        r = file_tools_regex_replace(
+            multi_line_file, r"line(\d+)", r"item_\1_value", dry_run=True
+        )
+        text = r.content[0].text
+        assert "+item_1_value" in text
+        assert r"\1" not in text
 
 
 class TestIndentLines:

@@ -1,5 +1,35 @@
 # 更新日志
 
+## v1.9.1 (2026-11-11)
+
+### file_tools_regex_replace dry_run 显示模拟 diff 预览
+
+- **动机**：旧版 dry_run 只输出「匹配到 N 处，将替换 M 处」统计，agent 无法预览实际改了什么，需实际执行才能看到 diff；改为 dry_run 即显示 unified diff 预览，执行前可确认改动
+- **实现**：新增 `_diff_truncated` helper（unified diff n=1 上下文，按 hunk 边界截断到 max_chars，至少输出 1 个 hunk）；模拟替换计算提前到 dry_run 分支之前（dry_run 和实际执行共用）；dry_run 分支复用现有 diff 逻辑，**不写文件、不备份**
+- **新增 `max_chars` 参数**（默认 5000）：diff 预览总字符上限，超限时当前 hunk 整块不出 + footer 列出被省略 hunk 的 `@@` 头（自带新旧行号+跨度；最多 10 个，超出折叠）——替代初版死路指引「完整 diff 请用 file_tools_diff 查看」（file_tools_diff 只能对比磁盘文件，而本 diff 是内存模拟，磁盘上不存在"修改后"文件）
+- **截断 footer 重设计（复用 hunk 头，作者拍板）**：初版 footer「完整 diff 请用 file_tools_diff 查看」是死路（file_tools_diff 只能对比磁盘文件，本 diff 是内存模拟）；改为截断时 footer 直接列出被省略 hunk 的 `@@` 头（`@@ -old,n +new,m @@` 自带新旧行号+跨度），零计数器、零语义混杂，最多列 10 个超出折叠为「（列前 10）」；footer 不计入 max_chars 预算
+- **默认开 `re.MULTILINE`（行为改动，作者拍板）**：`file_tools_regex` 与 `file_tools_regex_replace` 的 `re.compile` 加 `re.MULTILINE`——此前 `^`/`$` 只在整段首尾生效，用户写 `^line2$` 匹配中间行会静默失败（C 子 agent 体验盲测挖出）；现 `^`/`$` 按行匹配（每行首尾），跨行匹配（pattern 内 `\n`）不受影响（两者机制正交），整段绝对首尾用 `\A`/`\Z`
+- **docstring 精简（作者拍板，两工具）**：`file_tools_regex` / `file_tools_regex_replace` 的顶层描述与参数描述按「只写 JSON Schema 表达不了、且 agent 猜错会出错的信息」原则精简——砍三类：①Schema 复述（`默认 N`/`支持整数或字符串`/`false=默认`，JSON `default`/`anyOf` 已表达）②实现细节（`re.finditer + 从后往前`/`拼接…finditer 匹配`/`Python re.sub 的 expand 语义`/行尾探测逻辑）③运行时自解释（`超出文件总行数时报错`/`传 0 报错`/`不能为空`）；留两类：语义陷阱（`start` 标注「不是第几个匹配」、`count -1=全部`）+ 新行为（`^/$ 按行`、`\A/\Z` 绝对首尾、footer 列 @@ 头、footer 不计入预算）
+- **description 盲测补漏（两个无上下文子 agent 盲测后，作者拍板）**：盲测法=子 agent 只看 schema description 预测传参/输出 → 实调 → 对比，两 agent 均评「好用」但独立发现同一缺失：**单捕获组时匹配内容列显示组内容（`(\d+)ms` 匹配 `120ms` 但列显示 `120`），description 只写了多组展平语义、单组预期差**（agent 预期完整匹配，看到组内容会以为 bug，非运行时自解释）→ `file_tools_regex` 顶层补「有捕获组时匹配内容列显示组内容（单组=组文本，多组=每组一行）」；另砍顶层/pattern 重复的「跨行在 pattern 内写 \n」（留顶层、删参数级）。盲测其余发现按精简原则否决：换行转义字面 `\n`（运行时自解释）、count/start 按展平行（「行结果」措辞已覆盖）、分页 footer「已全部展示」字面歧义（属 v1.9.0 表格 footer 文案，超出本轮范围）
+- **修复**：`_diff_truncated` 的 `parts = header_lines` 引用赋值 bug——`parts` 和 `header_lines` 同一对象导致截断条件 `len(parts) > len(header_lines)` 永远 False，截断永不触发；改为 `list(header_lines)` 拷贝
+- **测试**：`test_dry_run` 增强断言 diff 内容（`-line1`/`+ITEM`），新增 `test_dry_run_diff_cross_line`（跨行合并 20→19 行）、`test_dry_run_max_chars_truncation`（max_chars=100 截断）、`test_dry_run_no_change`（替换不变→「无差异」）；全量 639 通过
+- **文档同步**：README 工具表描述更新、plugin.json 版本 1.9.0→1.9.1
+- **复审修复（无上下文子 agent 对抗复审，PASS）**：①`max_chars` 无下限校验（负数/0 未拒绝）→ 加 `max_chars < 1` 报错；②测试缺口补齐——非 dry_run 路径 diff 零断言（HIGH）、max_chars 恰好不截断/恰好截断边界（HIGH，预算口径 `len(l)+1` 比 `"\n".join` 输出长恰好 1）、max_chars 极小时至少 1 个 hunk 守卫不变量 + 截掉的 hunk 整块不出、max_chars 0/负数/字符串解析、start/count 与 dry_run 交互、行数增加方向（1→2 行）、反向引用在 diff 中展开；全量 646 通过
+- **既有问题清理（非本次引入，作者要求清理）**：`test_mixed_whitespace`/`test_shrink_partial`（`file_tools_indent_lines` 测试）在全部 7 个 Test 类中各有一份完全相同的副本（复制粘贴残留）→ 删除 6 处误放副本（TestAppend/TestReplaceLines/TestInsertLines/TestDeleteLines/TestReplace/TestRegexReplace 各 25 行），只保留 TestIndentLines 的正确归属；646→636 全绿
+
+## v1.9.0 (2026-11-11)
+
+### file_tools_regex 输出格式重构：JSON → 表格（作者拍板）
+
+- **动机**：旧版返回 JSON（`{total_matches, matches:[{match, lines, matched}]}`），token 开销大、agent 扫读不直观；多捕获组用列表嵌套、跨行匹配用 `lines: "28~29"` 区间表示，信息密度低
+- **新格式**：纯文本表格 `序号 | 行号,列号 | 匹配内容`（0 组/1 组时不显示「组」列；2+ 组时多一列「组」），多行匹配转义为一行（`\n`/`\t`/`|`/`\` → 转义字符），底部空行 + 页脚说明（全部展示 / 分页提示用 `start=N` 继续）
+- **捕获组展平**：0 组→组号 `0` 整匹配；1 组→组号 `1`；2+ 组→**每组一行**（各自独立行号,列号，跨行匹配时各组定位精确）；未参与匹配的组（如 `(a)|(b)` 未命中侧）显示 `None`；零宽匹配（空串）显式显示 `""`
+- **新增列号**：`行号,列号` 定位到组起始位置（1-based），比旧版只有行号更精确
+- **新增 `max_chars` 参数**（默认 5000）：总字符预算，超出则**整行停止**（不输出半行，footer 提示 `start=N` 继续）；每行内容另有 260 字符上限（超则 `<<<TRUNCATED>>>` 标记）
+- **语义变化**：`start`/`count` 从「第几个匹配」改为「第几行结果」（展平后一行=一个组），footer 的 `start=N` 指引自然为行号
+- **测试**：TestRegex 全量重写（JSON 解析 → 表格解析），新增转义（`|`/`\`/`\t`）、max_chars 整行停、零宽匹配 `""`、未命中组 `None`、跨行各组独立行号等用例；全量 636 通过
+- **文档同步**：README / AGENTS.md / plugin.json meta.tools / plugin.py register_tool 的 `file_tools_regex` 描述均从「返回 JSON」更新为「返回表格」
+
 ## v1.8.3 (2026-10-17)
 
 ### 多 agent 工作区解析修复：相对路径接入 QwenPaw ContextVar（智能体工作区）

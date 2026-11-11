@@ -32,7 +32,7 @@ QwenPaw 文件操作补充插件。注册 27 个 Agent 工具，补充 QwenPaw �
 ### 文本读取类（3 个）
 6. `file_tools_read_lines` — 按行读取（纯文本格式，支持行号显示）
 7. `file_tools_read_block` — 读取矩形块（行+列范围）
-8. `file_tools_regex` — 正则搜索，支持跨行匹配，返回 JSON
+8. `file_tools_regex` — 正则搜索，支持跨行匹配，返回表格（序号|行号,列号|组|内容；捕获组展平为每组一行，多行匹配转义为一行）
 
 ### 文件修改类（7 个，自动备份）
 9. `file_tools_append` — 追加内容到文件末尾
@@ -40,7 +40,7 @@ QwenPaw 文件操作补充插件。注册 27 个 Agent 工具，补充 QwenPaw �
 11. `file_tools_insert_lines` — 行前插入
 12. `file_tools_delete_lines` — 删除行区间
 13. `file_tools_replace` — 精确子串替换，支持跨行（dry_run）
-14. `file_tools_regex_replace` — 正则替换，支持跨行匹配（dry_run）
+14. `file_tools_regex_replace` — 正则替换，支持跨行匹配（dry_run 显示模拟 diff 预览）
 15. `file_tools_indent_lines` — 调整行首缩进（expand/shrink）
 
 ### 安全文件操作类（5 个，不触发备份）

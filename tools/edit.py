@@ -588,6 +588,62 @@ def file_tools_replace(
 # ── 14. file_tools_regex_replace ──────────────────────────
 
 
+def _diff_truncated(original: List[str], modified: List[str], max_chars: int) -> str:
+    """生成 unified diff（n=1 上下文），按 hunk 边界截断到 max_chars。
+
+    至少输出 1 个 hunk（同 regex 表格「至少 1 行」守卫）。
+    超限时当前 hunk 整块不出，footer 列出被省略 hunk 的 @@ 头（自带新旧行号+跨度），
+    最多列 10 个，超出折叠。footer 本身不计入 max_chars 预算。
+    """
+    import difflib
+    diff_lines = list(
+        difflib.unified_diff(
+            [l + "\n" for l in original],
+            [l + "\n" for l in modified],
+            fromfile="original", tofile="modified", n=1,
+        )
+    )
+    # 按 hunk 分组（@@ 行是 hunk 起始，@@ 之前是 header）
+    header_lines: List[str] = []
+    hunks: List[List[str]] = []
+    current: List[str] = []
+    for line in diff_lines:
+        line = line.rstrip("\n")
+        if line.startswith("@@"):
+            if current:
+                hunks.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+        else:
+            header_lines.append(line)
+    if current:
+        hunks.append(current)
+
+    if not hunks:
+        return "（无差异）"
+
+    parts: List[str] = list(header_lines)
+    used = sum(len(l) + 1 for l in header_lines)
+
+    truncated_heads: List[str] = []
+    for i, hunk in enumerate(hunks):
+        cost = sum(len(l) + 1 for l in hunk)
+        if used + cost > max_chars and len(parts) > len(header_lines):
+            truncated_heads = [h[0] for h in hunks[i:]]
+            break
+        parts.extend(hunk)
+        used += cost
+    if truncated_heads:
+        shown = truncated_heads[:10]
+        head_list = " / ".join(shown)
+        if len(truncated_heads) > 10:
+            parts.append(f"<<<TRUNCATED>>> 省略 {len(truncated_heads)} 个差异块（列前 10）：{head_list}")
+        else:
+            parts.append(f"<<<TRUNCATED>>> 省略 {len(truncated_heads)} 个差异块：{head_list}")
+    return "\n".join(parts)
+
+
 def file_tools_regex_replace(
     path: str,
     pattern: str,
@@ -599,20 +655,22 @@ def file_tools_regex_replace(
     encoding: str = "auto",
     dry_run: bool = False,
     line_separator: Literal["auto", "\\n", "\\r\\n"] = "auto",
+    max_chars: Union[int, str] = 5000,
 ) -> str:
-    """正则替换文件内容（re.finditer + 从后往前替换），支持跨行匹配。修改前自动备份。从后往前逐个替换，避免偏移漂移。支持 \\1、\\g<name> 等反向引用。提供 dry_run 模式预览。返回时附带 unified diff 格式的差异预览。写回时 \\r\\n/\\r 自动统一为 \\n。
+    """正则替换文件内容，支持跨行匹配。修改前自动备份。支持 \\1、\\g<name> 反向引用。dry_run 显示模拟 diff 预览。
 
     Args:
-        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。文件不存在时报错。
-        pattern: 正则表达式，Python re 语法。拼接行范围后整体匹配，支持跨行匹配。不能为空字符串。
-        replacement: 替换字符串，支持 \\1、\\g<name> 等反向引用。Python re.sub 的 expand 语义。
-        start_line: 搜索起始行号，1-based，包含。默认 1。最小值为 1，超出文件行数时报错。支持整数或十进制数字字符串。
-        end_line: 搜索结束行号，1-based，包含。默认 None=文件末尾。必须 >= start_line。支持整数或十进制数字字符串。
-        start: 从第几个匹配开始替换，1-based。默认 1。最小值为 1，超出匹配总数时报错。支持整数或十进制数字字符串。
-        count: 替换次数。1=只替换第 1 个（默认），-1=替换全部匹配。传 0 报错。支持整数或十进制数字字符串。
-        encoding: 文件编码。auto=自动检测（默认），也可指定编码名称。
-        dry_run: 预览模式。true=只统计匹配数量并显示模拟结果，不实际修改文件。false=实际执行替换（默认）。
-        line_separator: 行结束符控制。auto=保持文件主行尾（空/无行尾/探测失败按操作系统，默认），\\n=Unix 风格 LF，\\r\\n=Windows 风格 CRLF。
+        path: 文件路径。相对路径相对于 workspace 目录，支持 ~ 展开。
+        pattern: 正则表达式。跨行在 pattern 内写 \\n；^/$ 按行（每行首尾），整段绝对首尾用 \\A/\\Z。
+        replacement: 替换字符串，支持 \\1、\\g<name> 反向引用。
+        start_line: 搜索起始行号，1-based，包含。
+        end_line: 搜索结束行号，1-based，包含。None=文件末尾。
+        start: 从第几个匹配开始替换，1-based。
+        count: 替换次数。-1=全部。
+        encoding: 文件编码。
+        dry_run: 预览模式。true=显示模拟 diff 预览，不实际修改文件。
+        line_separator: 行结束符控制。auto=保持文件主行尾。
+        max_chars: diff 预览总字符上限。超限时按 hunk 边界截断，footer 列被省略 hunk 的 @@ 头（最多 10 个，超出折叠）；footer 不计入预算。
     """
     resolved = resolve_path(path)
 
@@ -628,6 +686,11 @@ def file_tools_regex_replace(
     count, err = parse_int(count, "count")
     if err:
         return make_error("正则替换", err)
+    max_chars, err = parse_int(max_chars, "max_chars")
+    if err:
+        return make_error("正则替换", err)
+    if max_chars < 1:
+        return make_error("正则替换", f"max_chars 参数值 {max_chars} 不合法。最小值为 1。")
 
     if not os.path.isfile(resolved):
         return make_error("正则替换", f"文件「{resolved}」不存在")
@@ -636,7 +699,7 @@ def file_tools_regex_replace(
         return make_error("正则替换", "pattern 不能为空字符串。请传入有效的正则表达式。")
 
     try:
-        compiled = re_module.compile(pattern)
+        compiled = re_module.compile(pattern, re_module.MULTILINE)
     except re_module.error as e:
         return make_error("正则替换", f"正则表达式语法错误：{e}")
 
@@ -698,25 +761,30 @@ def file_tools_regex_replace(
 
     replace_count = len(effective_matches)
 
+    # 模拟替换（dry_run 和实际执行共用）
+    simulated_range = range_content
+    for m in reversed(effective_matches):
+        simulated_range = simulated_range[:m.start()] + m.expand(replacement) + simulated_range[m.end():]
+
+    new_lines = lines.copy()
+    new_lines[actual_start:actual_end] = simulated_range.split("\n")
+
+    # 生成 diff 预览
+    diff_text = _diff_truncated(lines, new_lines, max_chars)
+
     if dry_run:
+        new_total = len(new_lines)
         return make_success(
             f"⚠️ dry_run 模式 — 以下为模拟修改结果，未实际修改文件。\n\n"
             f"模拟替换：\n"
-            f"  匹配到 {total_matches} 处，将替换 {replace_count} 处。"
+            f"  匹配到 {total_matches} 处，将替换 {replace_count} 处。\n"
+            f"文件从 {total_lines} 行变为 {new_total} 行。\n\n"
+            f"{diff_text}"
         )
 
     history_number = backup_file(resolved)
     if history_number is None:
         return make_error("正则替换", "备份原文件失败。因为获取会话文件路径失败。")
-
-    # 从后往前替换，避免偏移漂移
-    old_range = range_content
-    for m in reversed(effective_matches):
-        range_content = range_content[:m.start()] + m.expand(replacement) + range_content[m.end():]
-
-    # 替换回 lines
-    new_lines = lines.copy()
-    new_lines[actual_start:actual_end] = range_content.split("\n")
 
     # 解析 line_separator（auto=保持目标主行尾，v1.7.0 家族裁决）
     nl = _resolve_newline(resolved, resolved_encoding, line_separator)
@@ -725,19 +793,6 @@ def file_tools_regex_replace(
         _write_file(resolved, "\n".join(new_lines), resolved_encoding, newline=nl)
     except Exception as e:
         return make_error("正则替换", f"写入文件时出错：{e}")
-
-    # 生成 unified diff 预览
-    import difflib
-    original_with_nl = [l + '\n' for l in lines]
-    modified_with_nl = [l + '\n' for l in new_lines]
-    diff = difflib.unified_diff(
-        original_with_nl,
-        modified_with_nl,
-        fromfile='original',
-        tofile='modified',
-        n=1,
-    )
-    diff_text = ''.join(diff)
 
     new_total = len(new_lines)
     return make_success(

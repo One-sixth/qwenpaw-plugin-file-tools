@@ -6,6 +6,13 @@
 
 ## 架构决策
 
+### 插件安装方式（2026-11-11 确立，替代旧「双工作树同步」）
+- **新流程**：开发目录 `git ls-files -z` 导出干净 zip（38 跟踪文件，自动排除 `.git`/`__pycache__`/`.coverage`/`.pytest_cache`）→ `qwenpaw plugin install <zip> --force` 热装（QwenPaw 运行时经 API 立即生效，无需重启）
+- **zip 结构**：顶层目录 `qwenpaw-plugin-file-tools/`，`plugin.json` 在顶层（服务端 `_find_plugin_dir` 找根或顶层子目录的 plugin.json）
+- **坑**：中文文件名（早期测试指南.md/早期设计稿.md）必须 `git ls-files -z`（null 分隔）——普通 `git ls-files` 对非 ASCII 文件名 quote 成 `"\\346..."` 致打包失败；zip 内 arcname 需 UTF-8 flag（Python zipfile 默认正确，已验证）
+- **装机目录状态**：`C:\Users\TWD\.qwenpaw\plugins\qwenpaw-plugin-file-tools` 经 `--force` 重装后**不再是 git 工作树**（`.git` 消失，变干净拷贝）——不要再对装机目录做 git 操作；装机目录是独立快照，与 git 仓库不再联动
+- **⚠️ 热加载不刷新已运行会话**：`qwenpaw plugin install` 替换宿主进程已加载模块（`inspect.getsource` 可验证是新版），但**当前对话会话的工具绑定是启动时快照**——改完工具行为后当前会话调工具仍返回旧结果，需**新开会话**（或重启 QwenPaw）才用上新版
+
 ### 文件 I/O 模式
 - **统一用文本模式**（`r`/`w`/`a`），不手动处理行分隔符
 - Python 文本模式自动处理 `\n` ↔ `\r\n`，无需手动干预
@@ -327,3 +334,50 @@ D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="
 **待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后联机 5 场景全绿）；③~~read_block + diff 联机冒烟~~ ✅（2026-09-13 凌晨作者重装后联机 9/9 全绿：read_block 3 发（图例/截断新协议/无图例）+ diff 6 发（行尾序号头/跳跃装填名片b+后续展开/行长截断+汇总/count=1部分展开/CRLF-LF行尾提示/修正数据后名片b复验））；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
 
 > **新会话续接口令（收工态 v1.8.0）**：五批改动全部落地——read_lines 三件套（已 commit=`4a6ac6d`+联机 5 场景）+ read_block 批 + diff/常量批 + 死常量清扫批 + diff 折叠重设计批（8 文件增量待作者 commit）；复审闭环（FAIL→修复全过）+ 联机 14 场景全绿。无代码挂账。观察项：图例矫治 LLM 误读的日常效果、read_block 行级折叠否决后若需部分视野再议。
+
+
+---
+
+## v1.9.x regex 表格重构 + regex_replace dry_run diff（2026-11-11，作者主导）
+
+**v1.9.0 `file_tools_regex` JSON→表格**：动机=旧 JSON（`{total_matches, matches:[...]}`）token 开销大、agent 扫读不直观。新格式 `序号 | 行号,列号 | [组 |] 匹配内容`：捕获组展平（2+ 组每组一行、独立行号,列号；未命中组 `None`；零宽 `""`）、0/1 组隐藏「组」列（条件列）、多行匹配转义一行（`\n`/`\t`/`|`/`\`）、新增列号（组起始 1-based）、`max_chars`（默认 5000）整行停止不输出半行 + 每行 260 字符上限、`start`/`count` 语义从「第几匹配」改「第几结果行」。TestRegex 全量重写。
+
+**v1.9.1 `file_tools_regex_replace` dry_run 显示模拟 diff**：动机=旧 dry_run 只输出「匹配到 N 处，将替换 M 处」统计，agent 执行前无法预览改动。实现=新增 `_diff_truncated` helper（unified diff n=1，按 hunk 边界截断到 max_chars，至少 1 个 hunk）；模拟替换计算提前到 dry_run 之前（两路径共用）；dry_run 不写文件不备份；新增 `max_chars` 参数（默认 5000）。
+
+**复审（两个无上下文子 agent 对抗复审，代码 PASS + 测试覆盖有缺口）**：
+- 修 `_diff_truncated` 引用赋值 bug：`parts = header_lines` 同一对象 → 截断条件 `len(parts) > len(header_lines)` 永远 False → 改 `list(header_lines)` 拷贝（测试当场逮到）
+- 修 `max_chars` 无下限校验（负数/0 未拒绝）→ 加 `max_chars < 1` 报错
+- 测试缺口补齐：非 dry_run diff 零断言（HIGH）、max_chars 恰好不截断/恰好截断边界（HIGH，**预算口径 `len(l)+1` 比 `"\n".join` 输出长恰好 1**——不截断边界=diff_len+1）、至少 1 hunk 守卫 + 截掉 hunk 整块不出、start/count 交互、行数增加方向、反向引用展开
+- 清理 6 处误放重复测试（`test_mixed_whitespace`/`test_shrink_partial` 在 7 个 Test 类各一份完全相同副本，删 6 处留 TestIndentLines 正确归属）
+- 646→636 全绿（删 12 个重复测试）
+
+**⚠️ 未定案：`_diff_truncated` 截断 footer 死路 + 方案 C 讨论中（2026-11-11 晚，泰斗先生指出）**：
+- **问题**：截断 footer「完整 diff 请用 file_tools_diff 查看」是**死路**——`file_tools_diff` 只能对比磁盘上两个文件，regex_replace 的 diff 是**内存模拟**（磁盘上不存在"修改后"文件）。泰斗先生指出「file_tools_diff 并不能显示差异」。
+- **泰斗先生核心洞察**：regex_replace 是**行动**——行动完文件就变更了，agent 验证的最短路径是**直接读文件**（`file_tools_read_lines`），不是看完整 diff。
+- **方案**：A=改 footer 文案（增大 max_chars）/ B=省略 footer 只留标记 / **C=泰斗先生倾向**：前半显示 diff（达 max_chars 预算），后半省略，**单纯显示更多变更行的行号**。
+- **方案 C 细化（小音提出，泰斗先生「还需要考虑下，感觉不太 ok」未定案）**：行号提取=扫描隐藏 hunk，**双行计数器**（`+` 行记**新文件**行号→行动后直接 read_lines 核对；`-` 行记**旧文件**行号→纯删除场景）；区间压缩（连续 ≥3 行压 `13-18`）；footer 自封顶（行号条目超 ~30 个时前 20 + `…等 N 处`）。泰斗先生质疑「纯删除为什么无法显示」→ 小音澄清：能显示，`-` 行带旧文件行号，双计数器方案信息完备。
+- **最终方案（2026-11-11 晚定案，作者拍板「复用 hunk 头」）**：放弃方案 C 的「自提取变更行行号 + 双计数器」——太重（要区分 `+`/`-`/上下文行各自怎么计数，分支多易错，footer 新旧行号语义还混杂）。改为**截断时 footer 直接列出被省略 hunk 的 `@@` 头**（`@@ -old,n +new,m @@`）：每个 hunk 第一行天生自带旧/新起始行号+跨度，纯删除是 `+0,0`，**零计数器、零语义混杂**；最多列 10 个头，超出折叠为 `（列前 10）`。footer 形态：`<<<TRUNCATED>>> 省略 N 个差异块：@@ -13,6 +13,6 @@ / @@ -5,3 +0,0 @@`。实现=改 `_diff_truncated`（截断时收集 `hunks[i:]` 的首行 `@@` 头拼接，≤10 全列、>10 折叠）；测试改 `test_dry_run_max_chars_truncation`（断言死路指引已移除 + 截掉 hunk 整块不出）+ 新增 `test_truncated_footer_lists_hunk_heads`（40 hunk 触发折叠、footer 固定 10 头）；637 全绿。教训入知识库《长输出截断与折叠协议设计》「续读指引必须可操作 + 优先复用 diff 自带结构信息，别另起炉灶提取」。
+
+**未 commit（10 文件，作者 review 后提交）**：edit.py / test_edit.py / read.py / test_read.py / CHANGELOG.md / MEMORY.md / README.md / AGENTS.md / plugin.json / plugin.py。zip 在 `regex_test\qwenpaw-plugin-file-tools-v1.9.1.zip`。
+
+### 三子 agent 复审 + MULTILINE 行为改动（2026-11-11 晚，footer 落地后）
+
+**三个无上下文子 agent 并行复审**（A 对抗复审代码 / B 测试覆盖 / C 体验盲测"开发者视角"）：
+- **A PASS**（代码正确性零问题）：截断条件、首 hunk 守卫、`truncated_heads = hunks[i:]` 切片（预算扫描 1~3000 验证 `shown+omit==total` 不重不漏）、footer 格式（≤10 全列/>10 折叠）、两路径共用 `diff_text`（edit.py:773）全过。2 个 docstring 措辞瑕疵（已修）：①`max_chars` 说"总字符上限"但 footer 是 `parts.append` 不受约束 → 改"footer 本身不计入 max_chars 预算"；②"纯删除为 +0,0"举例不准 → **实测 +0,0 只在整文件删空时出现，而删空只有 1 个 hunk 不截断（单 hunk 守卫全输出）→ footer 里永远不会出现 +0,0**，删除末尾段实际是 `@@ -10,6 +10 @@`（new 侧=保留行位置），故 docstring 删掉 +0,0 提法
+- **B 有缺口**（实现无 bug，纯函数行为全实测符合 docstring）：折叠边界恰好 10/11、省略数 N 精确值、单 hunk 超预算守卫、非 dry_run 截断 footer——**已全补**（用实测值锚定：gen(11)+mc=50→省略 10 全列、gen(12)+mc=50→省略 11 折叠、40 hunk mc=500 该构造 N=29、单 hunk mc=100 完整输出无 footer）
+- **C 体验：好用**（开发者零学习成本，unified diff + hunk 截断 + footer 列 @@ 头"改了哪里/改多少/截断部分在哪"一目了然）。挖出**真问题**：`^`/`$` 行锚点静默失效——`re.compile` 没开 MULTILINE，整段拼接匹配，`^` 只指文件首行、`$` 只指文件尾行，用户写 `^debug = true$` 匹配中间行直接报"未找到匹配"且无提示。**C 另报"dry_run/实际执行 diff 路径不同"系误报**（抽验 edit.py:773 证伪：两路径共用 `diff_text`，都截断）——再次印证"复审结论须抽验"
+- **MULTILINE 修复（作者拍板"默认开"）**：`file_tools_regex`（read.py:312）+ `file_tools_regex_replace`（edit.py:702）的 `re.compile(pattern)` → `re.compile(pattern, re_module.MULTILINE)`。**关键：跨行匹配不受影响**——跨行靠 `"\n".join` 拼段后 pattern 内 `\n`，MULTILINE 只动 `^`/`$`（从整段首尾变每行首尾），两者机制正交；整段绝对首尾用 `\A`/`\Z`。docstring 同步（`\A`/`\Z`/`\n` 用 `\\` 转义避免 SyntaxWarning，跟文件现有 `\\1`/`\\r\\n` 风格一致）。实测 `^debug = true$` 匹配中间行成功
+- **测试**：637→645（+MULTILINE 5：test_read 3 个 ^/$ 按行/跨行 + test_edit 2 个；+footer 缺口 3：折叠边界/单 hunk 守卫/非 dry_run footer；+N 精确值锚定 29）。`-W error::SyntaxWarning` 零警告
+- **未 commit 文件增为 10**（同前，read.py/test_read.py 新增 MULTILINE 改动）
+
+### docstring 精简（2026-11-11 晚，作者拍板）
+
+**起因**：作者质疑"工具描述和参数描述写得太详细，对 agent 是否多余"。小音分析：问题不是"太详细"而是**双重编码**——JSON Schema 结构（`type`/`default`/`anyOf`/`enum`/`required`）已表达的信息，description 又用文字复述一遍，纯浪费 token（27 工具 schema 全量注入 system prompt，每次对话都背着）。
+
+**原则（判断标准一句话）**：description 只写「JSON 结构表达不了、且 agent 猜错会出错」的信息。
+- **砍三类**：①Schema 复述（`默认 N`/`支持整数或十进制数字字符串`/`false=实际执行（默认）`——JSON `default`/`anyOf` 已表达）②实现细节（`re.finditer + 从后往前替换`/`拼接…finditer 匹配`/`Python re.sub 的 expand 语义`/行尾探测逻辑——agent 不用管）③运行时自解释（`超出文件总行数时报错`/`传 0 报错`/`不能为空`——一调用就知道）
+- **留两类**：语义陷阱（`start` 标注「不是第几个匹配」、`count -1=全部`）+ 新行为（`^/$ 按行`、`\A/\Z` 绝对首尾、footer 列 @@ 头、footer 不计入预算）
+- **范围**：本轮只精简 `file_tools_regex` + `file_tools_regex_replace`（本次改动的两个）；27 工具全量精简待作者决定
+- **注**：此原则与作者既有偏好「工具文档极简直觉化（每参数一句级、细节由运行时输出自解释）」一致——v1.9.x 迭代中为精确描述新行为把 description 越写越长，跑偏了
+
+**description 盲测补漏（2026-11-11 晚，作者拍板）**：两个无上下文子 agent 盲测（只看 schema description 预测传参/输出 → 实调 → 对比）均评「好用」、参数语义清晰（`^/$` vs `\A/\Z` 区分、"start 不是第几个匹配"被点名有价值），但**独立发现同一缺失**：单捕获组时匹配内容列显示组内容（`(\d+)ms` 匹配 `120ms` 但列显示 `120`）——description 只写了多组展平语义，单组情形 agent 预期完整匹配、看到组内容会以为 bug（**非运行时自解释**，这是"预期差"而非"看一眼就懂"）。处置：顶层补「有捕获组时匹配内容列显示组内容（单组=组文本，多组=每组一行）」+ 砍顶层/pattern 重复的「跨行 \n」。盲测其余发现按精简原则否决：换行转义字面 `\n`（运行时自解释）、count/start 按展平行（「行结果」已覆盖）、分页 footer「已全部展示」字面歧义（属 v1.9.0 表格 footer 文案，超出本轮范围）。**盲测法本身可复用**：无上下文 agent + 只给 description + 预测→实测→对比 + 结构化反馈（理解清晰度/预期差/多余缺失/加一句话/总评）。

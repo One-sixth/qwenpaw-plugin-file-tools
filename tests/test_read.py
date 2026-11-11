@@ -2,7 +2,6 @@
 
 import csv
 import io
-import json
 import os
 import re
 
@@ -361,187 +360,306 @@ class TestReadBlock:
 
 
 class TestRegex:
-    def _parse(self, result):
-        """解析 JSON 返回结果。错误消息直接返回。"""
-        text = result.content[0].text
-        if text.startswith("{"):
-            return json.loads(text)
-        return text
+    def _text(self, result):
+        return result.content[0].text
+
+    def _data_rows(self, result):
+        """解析表格：返回 (数据行列表, 页脚行列表)。
+        数据行格式 `序号 | 行号,列号 | 组 | 内容`，页脚在空行之后。"""
+        text = self._text(result)
+        # 跳过表头行
+        body = text.split("\n", 1)[1] if "\n" in text else ""
+        lines = body.split("\n")
+        # 页脚 = 空行之后的所有行
+        data, footer = [], []
+        seen_blank = False
+        for ln in lines:
+            if not seen_blank:
+                if ln.strip() == "":
+                    seen_blank = True
+                    continue
+                data.append(ln)
+            else:
+                footer.append(ln)
+        return data, footer
 
     def test_basic(self, multi_line_file):
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"line"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 20
-        assert len(result["matches"]) == 10  # 默认 count=10
-        assert result["matches"][0]["lines"] == "1"
-        assert result["matches"][0]["matched"] == "line"
+        """无捕获组：20 个匹配，默认 count=10，不显示组列。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line")
+        data, footer = self._data_rows(result)
+        assert len(data) == 10  # 默认 count=10
+        assert data[0] == "1 | 1,1 | line"
+        assert data[9] == "10 | 10,1 | line"
+        assert "当前展示了 1 → 10 行（共 20 行）" in "\n".join(footer)
+        assert "start=11" in "\n".join(footer)
 
     def test_single_capture(self, multi_line_file):
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"line(\d+)"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 20
-        # 单捕获组 → str
-        assert result["matches"][0]["matched"] == "1"
-        assert result["matches"][1]["matched"] == "2"
+        """单捕获组：内容为组 1，不显示组列。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line(\d+)")
+        data, footer = self._data_rows(result)
+        assert data[0] == "1 | 1,5 | 1"   # line1 中 '1' 在第 5 列
+        assert data[1] == "2 | 2,5 | 2"
 
     def test_multi_capture(self, multi_line_file):
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"(line)(\d+)"))
-        assert isinstance(result, dict)
-        # 多捕获组 → list
-        assert result["matches"][0]["matched"] == ["line", "1"]
+        """多捕获组：展平为每组一行，显示组列。"""
+        result = file_tools_regex(multi_line_file, pattern=r"(line)(\d+)")
+        data, footer = self._data_rows(result)
+        # 2+ 组显示组列表头
+        assert "序号 | 行号,列号 | 组 | 匹配内容" in self._text(result)
+        # line1 → 组1 'line' + 组2 '1'
+        assert data[0] == "1 | 1,1 | 1 | line"
+        assert data[1] == "2 | 1,5 | 2 | 1"
+        # line2 → 组1 'line' + 组2 '2'
+        assert data[2] == "3 | 2,1 | 1 | line"
+        assert data[3] == "4 | 2,5 | 2 | 2"
 
     def test_no_match(self, multi_line_file):
         result = file_tools_regex(multi_line_file, pattern=r"ZZZZ_NOT_FOUND")
-        data = self._parse(result)
-        assert isinstance(data, dict)
-        assert data["total_matches"] == 0
-        assert data["matches"] == []
+        assert self._text(result) == "共 0 个匹配。"
 
     def test_nonexistent_file(self):
         result = file_tools_regex("/nonexistent.txt", pattern=r"test")
-        assert "失败" in result.content[0].text
+        assert "失败" in self._text(result)
 
     def test_invalid_regex(self, multi_line_file):
         result = file_tools_regex(multi_line_file, pattern=r"[invalid")
-        assert "失败" in result.content[0].text
+        assert "失败" in self._text(result)
+        assert "语法错误" in self._text(result)
 
     def test_pagination(self, multi_line_file):
-        """start 和 count 控制返回范围。"""
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"line", start=2, count=3))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 20
-        assert len(result["matches"]) == 3
-        assert result["matches"][0]["match"] == 2
-        assert result["matches"][2]["match"] == 4
+        """start 和 count 控制返回行数。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line", start=2, count=3)
+        data, footer = self._data_rows(result)
+        assert len(data) == 3
+        assert data[0] == "2 | 2,1 | line"
+        assert data[2] == "4 | 4,1 | line"
+        assert "当前展示了 2 → 4 行（共 20 行）" in "\n".join(footer)
+        assert "start=5" in "\n".join(footer)
 
     def test_count_all(self, multi_line_file):
-        """count=-1 返回全部匹配。"""
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"line", count=-1))
-        assert isinstance(result, dict)
-        assert len(result["matches"]) == 20  # 全部
+        """count=-1 返回全部行。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line", count=-1)
+        data, footer = self._data_rows(result)
+        assert len(data) == 20
+        assert "已全部展示" in "\n".join(footer)
 
     def test_start_end_line(self, multi_line_file):
-        result = self._parse(file_tools_regex(
+        """行范围过滤：只搜 15~18 行。"""
+        result = file_tools_regex(
             multi_line_file, pattern=r"line",
             start_line=15, end_line=18,
-        ))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 4  # line15~line18
-        assert result["matches"][0]["lines"] == "15"
+        )
+        data, footer = self._data_rows(result)
+        assert len(data) == 4
+        assert data[0] == "1 | 15,1 | line"
+        assert data[3] == "4 | 18,1 | line"
+        assert "已全部展示" in "\n".join(footer)
 
     def test_chinese_regex(self, chinese_file):
-        result = self._parse(file_tools_regex(chinese_file, pattern=r"第"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] >= 1
+        result = file_tools_regex(chinese_file, pattern=r"第")
+        data, footer = self._data_rows(result)
+        assert len(data) >= 1
+        assert "第" in data[0]
 
     def test_empty_file(self, empty_file):
-        result = self._parse(file_tools_regex(empty_file, pattern=r"test"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 0
+        result = file_tools_regex(empty_file, pattern=r"test")
+        assert self._text(result) == "共 0 个匹配。"
 
     def test_start_lt_1(self, multi_line_file):
         """start<1 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", start=0)
-        assert "失败" in result.content[0].text
-        assert "start" in result.content[0].text
+        assert "失败" in self._text(result)
+        assert "start" in self._text(result)
+
+    def test_start_gt_total_rows(self, multi_line_file):
+        """start 超出总行数应报错。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line", start=99)
+        assert "失败" in self._text(result)
+        assert "超出总行数" in self._text(result)
 
     def test_cross_line_multi_capture(self, cross_line_regex_file):
-        """跨行匹配+多捕获组"""
-        result = self._parse(file_tools_regex(cross_line_regex_file, pattern=r"def (\w+)\(.*?\):\s+return (.+)"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 2
-        m1 = result["matches"][0]
-        assert m1["lines"] == "1~2"
-        assert m1["matched"] == ["foo", "x + 1"]
-        m2 = result["matches"][1]
-        assert m2["lines"] == "4~5"
-        assert m2["matched"] == ["bar", "42"]
+        """跨行匹配+多捕获组：各组独立行号。"""
+        result = file_tools_regex(cross_line_regex_file, pattern=r"def (\w+)\(.*?\):\s+return (.+)")
+        data, footer = self._data_rows(result)
+        # 匹配1: def foo(x):\n    return x + 1  → 组1 'foo'(1,5) 组2 'x + 1'(2,12)
+        assert data[0] == "1 | 1,5 | 1 | foo"
+        assert data[1] == "2 | 2,12 | 2 | x + 1"
+        # 匹配2: def bar():\n    return 42  → 组1 'bar'(4,5) 组2 '42'(5,12)
+        assert data[2] == "3 | 4,5 | 1 | bar"
+        assert data[3] == "4 | 5,12 | 2 | 42"
 
     def test_cross_line_no_capture(self, cross_line_regex_file):
-        """跨行匹配+无捕获组"""
-        result = self._parse(file_tools_regex(cross_line_regex_file, pattern=r"def \w+\(.*?\):"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 2
-        assert result["matches"][0]["lines"] == "1"  # 单行匹配
-        assert "def foo" in result["matches"][0]["matched"]
+        """跨行匹配+无捕获组：内容含 \\n 转义。"""
+        # \s+return 使匹配跨越 def 行与 return 行
+        result = file_tools_regex(cross_line_regex_file, pattern=r"def \w+\(.*?\):\s+return")
+        data, footer = self._data_rows(result)
+        assert len(data) == 2
+        # 组0 整匹配跨两行，写成一行含 \n 转义（0 组不显示组列）
+        assert data[0].startswith("1 | 1,1 | ")
+        assert "\\n" in data[0]
+        assert "def foo" in data[0]
+
+    # ── 转义 ──────────────────────────────────────────────
+
+    def test_escape_pipe(self, tmp_dir):
+        """内容含 | 应转义为 \\|，不破坏表格。"""
+        path = os.path.join(tmp_dir, "pipe.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("a|b\nc|d\n")
+        result = file_tools_regex(path, pattern=r"\w\|\w")
+        data, footer = self._data_rows(result)
+        assert data[0] == "1 | 1,1 | a\\|b"
+        assert data[1] == "2 | 2,1 | c\\|d"
+
+    def test_escape_backslash(self, tmp_dir):
+        """内容含反斜杠应转义为 \\\\（文件存 1 个反斜杠 → 显示 2 个）。"""
+        path = os.path.join(tmp_dir, "bs.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("C:\\dir\\file\n")  # 文件内容含单个反斜杠
+        result = file_tools_regex(path, pattern=r"C:\\dir")  # 匹配 C:\dir
+        data, footer = self._data_rows(result)
+        assert len(data) == 1
+        assert data[0] == "1 | 1,1 | C:\\\\dir"
+
+    def test_escape_tab(self, tmp_dir):
+        """内容含制表符应转义为 \\t。"""
+        path = os.path.join(tmp_dir, "tab.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("a\tb\n")
+        result = file_tools_regex(path, pattern=r"a\tb")
+        data, footer = self._data_rows(result)
+        assert data[0] == "1 | 1,1 | a\\tb"
+
+    # ── 截断 ──────────────────────────────────────────────
+
+    def test_row_truncated(self, long_matched_file):
+        """单行内容超 260 字符应截断并带标记。"""
+        result = file_tools_regex(long_matched_file, pattern=r"x{300}")
+        data, footer = self._data_rows(result)
+        assert data[0].endswith("<<<TRUNCATED>>>")
+        # 截断后内容部分 = 260 个 x（0 组无组列，内容在第 3 列）
+        cell = data[0].split(" | ", 2)[2]
+        assert cell == "x" * 260 + "<<<TRUNCATED>>>"
+        assert "部分行因超过每行 260 字符上限被截断" in "\n".join(footer)
+
+    def test_row_no_truncation(self, multi_line_file):
+        """内容不超 260 字符不应有截断标记。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line")
+        data, footer = self._data_rows(result)
+        assert "<<<TRUNCATED>>>" not in "\n".join(data)
+        assert "每行 260" not in "\n".join(footer)
+
+    def test_max_chars_truncated(self, multi_line_file):
+        """总字符超 max_chars 应整行停止并提示用 start 继续。"""
+        # 20 个匹配，每行约 20 字符，max_chars=60 应只展示前几行后停止
+        result = file_tools_regex(multi_line_file, pattern=r"line", count=-1, max_chars=60)
+        data, footer = self._data_rows(result)
+        # 整行停：不输出半行，footer 提示超限
+        assert len(data) < 20
+        assert "总字符超限 60" in "\n".join(footer)
+        assert "start=" in "\n".join(footer)
+
+    def test_max_chars_all_fit(self, multi_line_file):
+        """max_chars 足够大时全部展示无截断。"""
+        result = file_tools_regex(multi_line_file, pattern=r"line", count=-1, max_chars=10000)
+        data, footer = self._data_rows(result)
+        assert len(data) == 20
+        assert "已全部展示" in "\n".join(footer)
+        assert "<<<TRUNCATED>>>" not in "\n".join(data)
 
     # ── 边缘情况 ──────────────────────────────────────────
 
     def test_count_zero(self, multi_line_file):
         """count=0 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", count=0)
-        assert "失败" in result.content[0].text
-        assert "count" in result.content[0].text.lower()
+        assert "失败" in self._text(result)
+        assert "count" in self._text(result).lower()
 
     def test_count_negative_invalid(self, multi_line_file):
         """count<-1 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", count=-5)
-        assert "失败" in result.content[0].text
-        assert "count" in result.content[0].text.lower()
+        assert "失败" in self._text(result)
+        assert "count" in self._text(result).lower()
 
     def test_start_line_lt_1(self, multi_line_file):
         """start_line<1 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", start_line=0)
-        assert "失败" in result.content[0].text
+        assert "失败" in self._text(result)
 
     def test_start_line_gt_total(self, multi_line_file):
         """start_line>总行数 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", start_line=100)
-        assert "失败" in result.content[0].text
-        assert "超出" in result.content[0].text
-        assert "20" in result.content[0].text  # 提示总行数
+        assert "失败" in self._text(result)
+        assert "超出" in self._text(result)
+        assert "20" in self._text(result)  # 提示总行数
 
     def test_end_line_lt_1(self, multi_line_file):
         """end_line<1 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", end_line=0)
-        assert "失败" in result.content[0].text
+        assert "失败" in self._text(result)
 
     def test_end_line_lt_start_line(self, multi_line_file):
         """end_line<start_line 应报错"""
         result = file_tools_regex(multi_line_file, pattern=r"line", start_line=10, end_line=5)
-        assert "失败" in result.content[0].text
-        assert "矛盾" in result.content[0].text
+        assert "失败" in self._text(result)
+        assert "矛盾" in self._text(result)
 
     def test_empty_pattern(self, multi_line_file):
         """空pattern 应报错"""
         result = file_tools_regex(multi_line_file, pattern="")
-        assert "失败" in result.content[0].text
-        assert "pattern" in result.content[0].text.lower()
+        assert "失败" in self._text(result)
+        assert "pattern" in self._text(result).lower()
 
     def test_gbk_file(self, gbk_file):
         """GBK编码文件的正则搜索。"""
-        result = self._parse(file_tools_regex(gbk_file, pattern="你好"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] >= 1
+        result = file_tools_regex(gbk_file, pattern="你好")
+        data, footer = self._data_rows(result)
+        assert len(data) >= 1
+        assert "你好" in data[0]
 
     def test_crlf_file(self, crlf_file):
         """CRLF行尾文件的正则搜索。"""
-        result = self._parse(file_tools_regex(crlf_file, pattern="line"))
-        assert isinstance(result, dict)
-        assert result["total_matches"] == 3
-
-    def test_matched_truncated(self, long_matched_file):
-        """matched 超 250 字符应截断并带 note。"""
-        result = self._parse(file_tools_regex(long_matched_file, pattern=r"x{300}"))
-        assert isinstance(result, dict)
-        assert "note" in result
-        assert "<<truncated>>" in str(result["matches"][0]["matched"])
-
-    def test_matched_no_truncation(self, multi_line_file):
-        """matched 不超过 250 字符不应有 note。"""
-        result = self._parse(file_tools_regex(multi_line_file, pattern=r"line"))
-        assert isinstance(result, dict)
-        assert "note" not in result
+        result = file_tools_regex(crlf_file, pattern="line")
+        data, footer = self._data_rows(result)
+        assert len(data) == 3
 
     def test_special_chars(self, tmp_dir):
         """正则特殊字符（如 . * + ? 等）应正确匹配。"""
         path = os.path.join(tmp_dir, "special.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write("hello.world\nfoo*bar\nbaz+qux\n")
-        result = self._parse(file_tools_regex(path, pattern=r"hello\.world"))
-        assert result["total_matches"] == 1
-        result2 = self._parse(file_tools_regex(path, pattern=r"foo\*bar"))
-        assert result2["total_matches"] == 1
+        result = file_tools_regex(path, pattern=r"hello\.world")
+        data, footer = self._data_rows(result)
+        assert len(data) == 1
+        result2 = file_tools_regex(path, pattern=r"foo\*bar")
+        data2, footer2 = self._data_rows(result2)
+        assert len(data2) == 1
+
+    def test_zero_width_match(self, tmp_dir):
+        """零宽匹配（空串）应显式显示为 \"\"（双引号）。"""
+        path = os.path.join(tmp_dir, "zw.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("abc")
+        # a* 匹配: 位置0='a', 位置1/2/3=''（空串）→ 4 个匹配
+        result = file_tools_regex(path, pattern=r"a*", count=-1)
+        data, footer = self._data_rows(result)
+        assert len(data) == 4
+        assert data[0].endswith("| a")
+        # 空串匹配内容显式显示为 ""
+        assert data[1].endswith('| ""')
+        assert data[3].endswith('| ""')
+
+    def test_group_not_matched(self, tmp_dir):
+        """未参与匹配的组（如 (a)|(b) 中未命中侧）应显示 None。"""
+        path = os.path.join(tmp_dir, "gm.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("b\n")  # 含 b 不含 a
+        # (a)|(b) 只有 b 命中，组1 未命中 → None
+        result = file_tools_regex(path, pattern=r"(a)|(b)", count=-1)
+        data, footer = self._data_rows(result)
+        # 匹配1: 组1(a)未命中=None, 组2(b)命中='b'
+        assert data[0] == "1 | - | 1 | None"
+        assert data[1] == "2 | 1,1 | 2 | b"
 
 class TestStrLineParams:
     """行号/数字参数兼容字符串输入。"""
@@ -568,10 +686,34 @@ class TestStrLineParams:
 
     def test_regex_string_params_ok(self, multi_line_file):
         result = file_tools_regex(multi_line_file, r"line(\d+)", start_line="1", count="5")
-        data = json.loads(result.content[0].text)
-        assert data["total_matches"] >= 5
+        text = result.content[0].text
+        # 字符串参数正常解析，返回表格格式（1 组不显示组列）
+        assert "序号 | 行号,列号 | 匹配内容" in text
+        assert "1 | 1,5 | 1" in text
 
     def test_regex_illegal_count(self, multi_line_file):
         result = file_tools_regex(multi_line_file, r"line", count="abc")
         assert "失败" in result.content[0].text
         assert "count 参数应当输入整数" in result.content[0].text
+
+    # ── MULTILINE：^/$ 按行匹配，跨行 \n 不受影响 ──────────────────
+
+    def test_regex_multiline_anchor_middle_line(self, multi_line_file):
+        """^/$ 按行匹配：匹配中间行（multi_line_file 第 2 行 line2）。"""
+        result = file_tools_regex(multi_line_file, r"^line2$")
+        text = result.content[0].text
+        assert "1 | 2,1 | line2" in text          # 第 2 行整行匹配
+        assert "共 1 行" in text                   # 只 1 处（不是 0 也不是全匹配）
+
+    def test_regex_multiline_dollar_all_lines(self, multi_line_file):
+        """$ 匹配每行行尾：line\\d+$ 匹配所有 lineN 行（20 行）。"""
+        result = file_tools_regex(multi_line_file, r"line\d+$", count=-1)
+        text = result.content[0].text
+        assert "共 20 行" in text                  # 20 行各匹配一次
+
+    def test_regex_multiline_cross_line_unaffected(self, cross_line_regex_file):
+        """跨行匹配（pattern 内 \\n）不受 MULTILINE 影响。"""
+        # fixture: "def foo(x):\n    return x + 1\n\ndef bar():\n    return 42\n"
+        result = file_tools_regex(cross_line_regex_file, r"return 42$")
+        text = result.content[0].text
+        assert "return 42" in text                 # $ 按行匹配行尾，跨行能力不受影响

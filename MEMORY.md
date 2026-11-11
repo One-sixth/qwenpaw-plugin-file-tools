@@ -1,6 +1,7 @@
 # 项目记忆
 
 > 开发过程中的关键决策、踩坑记录、经验沉淀。按主题分类，不按日期记录。
+> **版本过程记录（盲测分数、对抗审查战果、裁决演变、未闭环清单）在 `CHANGELOG.md`**——本文件只留活约束、语义契约、坑。
 
 ---
 
@@ -9,7 +10,7 @@
 ### 插件安装方式（2026-11-11 确立，替代旧「双工作树同步」）
 - **新流程**：开发目录 `git ls-files -z` 导出干净 zip（38 跟踪文件，自动排除 `.git`/`__pycache__`/`.coverage`/`.pytest_cache`）→ `qwenpaw plugin install <zip> --force` 热装（QwenPaw 运行时经 API 立即生效，无需重启）
 - **zip 结构**：顶层目录 `qwenpaw-plugin-file-tools/`，`plugin.json` 在顶层（服务端 `_find_plugin_dir` 找根或顶层子目录的 plugin.json）
-- **坑**：中文文件名（早期测试指南.md/早期设计稿.md）必须 `git ls-files -z`（null 分隔）——普通 `git ls-files` 对非 ASCII 文件名 quote 成 `"\\346..."` 致打包失败；zip 内 arcname 需 UTF-8 flag（Python zipfile 默认正确，已验证）
+- **坑**：中文文件名（早期测试指南.md/早期设计稿.md）必须 `git ls-files -z`（null 分隔）——普通 `git ls-files` 对非 ASCII 文件名 quote 成 `"\346..."` 致打包失败；zip 内 arcname 需 UTF-8 flag（Python zipfile 默认正确，已验证）
 - **装机目录状态**：`C:\Users\TWD\.qwenpaw\plugins\qwenpaw-plugin-file-tools` 经 `--force` 重装后**不再是 git 工作树**（`.git` 消失，变干净拷贝）——不要再对装机目录做 git 操作；装机目录是独立快照，与 git 仓库不再联动
 - **⚠️ 热加载不刷新已运行会话**：`qwenpaw plugin install` 替换宿主进程已加载模块（`inspect.getsource` 可验证是新版），但**当前对话会话的工具绑定是启动时快照**——改完工具行为后当前会话调工具仍返回旧结果，需**新开会话**（或重启 QwenPaw）才用上新版
 
@@ -28,6 +29,7 @@
 - `register_tool` description 保持简短中文（1 句话），**不写依赖库名等实现细节**（v1.2.4 起：「依赖 pytrash」类语句全部移除；运行时错误提示除外）
 - 不单独写 skill 文档，docstring 就是 agent 的完整指南
 - **极简直觉化原则（2026-09-05 作者拍板，v1.3.3）**：指南≠注意事项清单。docstring 只写匹配 agent 世界知识的直觉级说明（每参数一句级），边界情况由运行时输出自解释（行内警告/统计行/中文报错）。listdir 文档 601 字符（schema 参数描述口径）为预算参照；「裹脚布」禁回流清单钉在 `TestEntryWording.test_docstring_minimal_contract`
+- **description 精简原则（2026-11-11 确立）**：description 只写「JSON 结构表达不了、且 agent 猜错会出错」的信息——砍 Schema 复述（default/anyOf 已表达）/实现细节/运行时自解释，留语义陷阱 + 新行为。已落地 `file_tools_regex` + `file_tools_regex_replace`，其余 25 工具暂缓
 - ⚠️ GUI 文案**只在条目不存在时写入**（`_write_tool_config` 对已存在条目 skip），插件升级不刷新 → 会留 v1.0 化石长文案；刷新办法：卸载插件（条目被删）再安装，或直接改 agent.json（QwenPaw 指纹缓存支持免重启，参考 `fix_agent_desc.py`）
 
 ### manifest meta 声明与 agent 可见性（2026-10-15 发现）
@@ -35,8 +37,8 @@
 - **根因**：plugin.json **无 `meta.tools` 声明** → QwenPaw `_merge_plugin_manifest_tools()`（manifest meta 是插件工具进 agent 配置快照的唯一通道）补不进条目；对照 wait_agent_task 插件有声明故全 agent 可见
 - **⚠️ UI 隐身 ≠ 运行时不可用**：实验复现 `_resolve_config_gates` + `ToolRegistry.filter` 证明快照无条目的插件工具照样放行（LLM 可调），只是 UI 看不见、无法开关——「功能正常、设置页隐身」的迷惑型 bug
 - **坑**：manifest 声明 `enabled: true` 会被忽略（QwenPaw 2.2.1 `_add_plugin_tool_default` 硬编码 enabled=False），补声明后新条目初始为禁用态，需逐 agent UI 开启
-- **执行状态（2026-10-15）**：方案 A 已落地——两份工作树（`D:\Data\github_repo\` 开发目录 + `C:\Users\TWD\.qwenpaw\plugins\` 装机目录）plugin.json 均已补 27 条 meta.tools（name/description/icon 与 register_tool 一致，省略 enabled 字段），JSON 合法 + 与注册名双向一致校验通过，git commit 留给作者；**版本 bump v1.8.1 + CHANGELOG 补段**（manifest 纯元数据修复）；⚠️ **第二层根因实锤**：QwenPaw `load_agent_config` 指纹缓存——存量 agent 的 agent.json 文件不变则配置对象永不重载，重启/卸载重装均无法补条目，存量 agent 需直改 agent.json（已对 ChqnR9/test3 执行：33 条 enabled=true）；隐私清扫：全仓真实称呼→「作者」（CHANGELOG 1 处 + MEMORY 6 处 + 联机主语中性化，扫描归零）
-- **v1.8.2 追加（2026-10-16）：UI 分组**——QwenPaw 2.2.2 分组机制实测：内置工具查前端硬编码表；**插件工具走后端 `ToolInfo.category`**（`_build_tool_info` 读 manifest `meta.tools[].category`，routers/tools.py:189-191），前端 `TOOL_GROUPS` 只认 6 个预定义组（files/web/media/agents/runtime/migration），未命中落「未分类」，**自创组名无效**；`register_tool(tool_type=...)` 与 UI 分组无关（仅 governance 白名单）。27 条声明已逐条补 `"category": "files"`（归「文件与代码」组）+ 版本 bump 1.8.2 + CHANGELOG 补段；中文**显示名**仍无通道（前端 i18n catalog 表仅 33 个内置工具，插件工具渲染代码显式走 `s.name` 原名分支）
+- **落地（v1.8.1/v1.8.2）**：27 条 meta.tools 已补（name/description/icon 与 register_tool 一致，省略 enabled）+ 逐条 `"category": "files"`（QwenPaw 2.2.2 起插件工具 UI 分组走后端 `ToolInfo.category`，前端只认 6 个预定义组，自创组名无效；`register_tool(tool_type=...)` 与 UI 分组无关）；中文**显示名**仍无通道（前端 i18n catalog 仅 33 个内置工具，插件工具渲染走 `s.name` 原名分支）
+- **⚠️ 存量 agent 补条目**：QwenPaw `load_agent_config` 指纹缓存——agent.json 文件不变则配置对象永不重载，重启/卸载重装均无法补条目，存量 agent 需直改 agent.json（已对 ChqnR9/test3 执行）
 
 ### 工具 Schema 生成机制
 QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()` 自动生成：
@@ -49,16 +51,16 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 - 修改 Agent 总体描述 → 改 `tools/*.py` 的 docstring 第一段
 - 修改 GUI 展示 → 改 `plugin.py` 的 `register_tool(description=...)` + 走上面的刷新办法
 
-### 行尾策略（2026-09-04 确立）
+### 行尾策略
 - `.gitattributes` 用 **`*.py -text`**：Windows 个人仓库，仓库字节 = 工作区字节（CRLF），git 永不转换
 - 教训：旧规则 `*.py text` 会在**每次 git add 时无条件**把 blob 归一成 LF（与 core.autocrlf 无关），造成 commit 假象"整文件重写"；`text=auto`（json/md 等）反而有历史 blob 保护不会翻
 - 归一化只发生在 **add 时刻**：v1.2.2 先 add 后建 .gitattributes，才让 20 个 .py 的 CRLF blob 逃过一劫（另 6 个没逃过，已于 v1.2.4 前后归队）
 - 验收：`git ls-files --eol` 全部 `.py` 应为 `i/crlf`
 
-### 运行时行尾策略（2026-09-05 第三裁决确立，v1.6.0 起生效）
+### 运行时行尾策略（2026-09-05 第三裁决确立，v1.6.0 起 copy_lines、v1.7.0 起全家生效）
 - **Python 文本模式读 `newline=None` 是通用换行翻译（原文件行尾读到即失真）；写 `newline=None` 只认 `os.linesep` 无视文件历史**——"读-改-写"型工具在 Windows 上会把 LF 文件整体转 CRLF，与被编辑内容无关
-- **裁决方向**：`*_line_separator=auto` 语义从"跟 OS"改为"**保持目标文件主行尾**"（`_dominant_newline` 探测：\r\n/\n/\r 多数者、平局 CRLF 优先、无行尾/空/新建落回 OS；复制内容随 join 的 `\n` 换装目标行尾）——copy_lines 已实现（第三裁决）
-- **推广已于 v1.7.0 落地（2026-09-05）**：`auto=保持目标主行尾` 铺满 edit.py 六读改写工具 + `file_tools_write`（整覆盖也保持旧文件主行尾）；`file_tools_append` 为**有意豁免**（auto=平台行尾，只做增量追加不重排已有字节，钉在 `TestAppendIntentionalDivergence` 防后人"顺手统一"）；探测函数 `dominant_newline`/`detect_file_newline` 下沉 utils.py 共享
+- **裁决方向**：`*_line_separator=auto` 语义 = "**保持目标文件主行尾**"（`_dominant_newline` 探测：\r\n/\n/\r 多数者、平局 CRLF 优先、无行尾/空/新建落回 OS；复制内容随 join 的 `\n` 换装目标行尾）
+- **推广（v1.7.0）**：铺满 edit.py 六读改写工具 + `file_tools_write`（整覆盖也保持旧文件主行尾）；`file_tools_append` 为**有意豁免**（auto=平台行尾，只做增量追加不重排已有字节，钉在 `TestAppendIntentionalDivergence` 防后人"顺手统一"）；探测函数 `dominant_newline`/`detect_file_newline` 下沉 utils.py 共享
 - 写回翻译前须 `content.replace("\r\n","\n")` 折叠（防 strict 拆行/用户 content 带入的 `\r\n` 二次翻译叠成 `\r\r\n`）；目标显式 `\n` 不翻译故豁免——v1.7.0 起此守卫**上移到 `_write_file` 中央**（`newline != "\n"` 才折叠，幂等），copy_lines 本地同条件折叠保留成双保险；副产物：replace/regex_replace 的 new_text/replacement 直通道（不过 normalize_newlines）自此不再能叠出 `\r\r\n`，"写回自动统一"的 docstring 承诺首次成立；POSIX 反向失真（CRLF 文件被误转 LF）同修
 - 配方与实验事实包：小窝知识库《编程技巧速查》§20
 
@@ -66,11 +68,45 @@ QwenPaw 插件工具 schema 由 `agentscope.tool._utils._extract_input_schema()`
 - **用户文件路径**：`get_workspace_dir()` → QwenPaw 官方 `qwenpaw.config.context.get_tool_base_dir()`（解析优先级：项目目录 → agent 工作区 → WORKING_DIR；ContextVar 每回合由 `ContextVarsSetupHook` 注入，同步工具经 `asyncio.to_thread` 自动携带 context 副本）。旧实现硬编码 `profiles["default"]` 是多 agent 相对路径全落 default 工作区的根因，已删
 - **备份小窝**：`get_session_dir()` → `get_current_workspace_dir()`（agent 自己的工作区）；file_tools_data 永不跟随聊天界面绑定的项目目录（防 agent 状态写进用户项目）
 - **无兜底链（作者拍板）**：运行时不做 load_config/tool_config 兜底，出错即抛；测试路径注入走 conftest `_mock_workspace_dirs`（mock 模块级 `get_workspace_dir`→tmp_dir + `get_session_dir` 值绑定仅 backup/manager.py 一处）
-- **复查修正（2026-10-17 无上下文对抗复查，FAIL→修复全过）**：①startup hook 清理在回合外必失败（ContextVar 未注入 → RuntimeError 被吞）→ 移除启动钩子，改备份成功后惰性清理（`_maybe_cleanup` + .last_cleanup 时间戳 24h 限频，请求回合内天然可靠）；②plugin.json min 2.0.0→2.2.2（`get_tool_base_dir` 2.2.0 引入，实测边界 2.2.2，旧声明致低版本宿主全工具 ImportError 静默瘫痪）；③conftest 死补丁清理 + monkeypatch.setattr 规范化；④新增 test_workspace_context.py 5 钉（模块导入期保存原函数引用绕过 autouse mock，直接测真实函数体 + ContextVar token reset 防污染）
+- **⚠️ startup hook 清理在回合外必失败**（ContextVar 未注入 → RuntimeError 被吞）→ 已移除启动钩子，改备份成功后惰性清理（见「备份系统」）；plugin.json min 版本 2.2.2（`get_tool_base_dir` 2.2.0 引入，实测边界 2.2.2，旧声明致低版本宿主全工具 ImportError 静默瘫痪）；test_workspace_context.py 5 钉（模块导入期保存原函数引用绕过 autouse mock，ContextVar token reset 防污染）
 
 ### 测试配置
 - 保留 `conftest.py` 手动 `sys.path.insert(0, _project_root)`，不加 `pyproject.toml`
-- ⚠️ **pytest 和 `show_tool_schema.py` 都必须用 `qwenpaw` conda 环境**（`D:\Software\miniconda3\envs\qwenpaw\python.exe`）——依赖 agentscope，`normal` 环境没有会全量报错；全量测试现 401 个
+- ⚠️ **pytest 和 `show_tool_schema.py` 都必须用 `qwenpaw` conda 环境**（`D:\Software\miniconda3\envs\qwenpaw\python.exe`）——依赖 agentscope，`normal` 环境没有会全量报错；测试数量随版本变，以 `pytest tests -q` 实际输出为准
+
+### listdir 语义契约（v1.3.0~v1.5.0 沉淀，改 listdir 必须遵守）
+- 过滤器间 AND、列表内 OR；空列表/全空白/不可识别输入 = 不过滤；列表参数接受单值 str 与 JSON 字符串化数组（`[`/`{` 开头字符串先 `json.loads` 还原、失败退回字面量——联机验收事故钉死）
+- types = **材质|目标** 两段复合（`dir`/`file`/`symlink|dir`/`symlink|file`/`symlink|invalid`），**分段匹配**（token 命中任一分段即保留）；词表严格三词，`invalid` 只做显示不做过滤 token
+- exclude = **gitignore 语义**（pathspec `from_lines("gitignore", ...)`，下限 >=1.1 因工厂名翻转坑）；**匹配对象 = 显示路径、绝不 realpath 解析链接**；目录命中 = 整树剪枝（剪后子项 `!` 无法复活，与 git 一致）
+- contains/regex 匹配**完整显示串**（所见即所搜）；子串可命中父目录名（`tools/` 被 `file-tools/` 吞），限定目录用 `(^|/)utils/` regex 锚定
+- 遍历剪枝唯二来源 = exclude 命中目录、环检测（防环用**祖先链** set 非全局 visited，两链合法复用同一目录不得误杀）；双上限常量 `_LISTDIR_MAX_MATCH/_LISTDIR_MAX_VISIT`（测试 monkeypatch 压低复现）
+- 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；断链 = symlink 条目 stat 失败
+- 文案契约：分页/越界/start 报错/空目录一律称「条目」不称「文件」；docstring 必留/禁回流词清单钉在 `TestEntryWording` + `test_docstring_minimal_contract`（禁回流词别拿旧版本文档当 REFERENCE）
+
+### copy_lines 行模型（v1.6.0/v1.6.1 list 模型，作者第四裁决）
+- **模型公理**：`split("\n")` 每个元素都是**真实行**，末尾换行对应的空行就是真实行，**行数 = 列表长度**（减法/排除/不对称特判全部删除）；**新建不补换行**（文件末尾状态由选区数据镜像）；0 字节文件 = 一行空行
+- `dst_file=None` = **自复制**（normcase 路径恒等；弃 samefile——链接场景文案与效果分裂）；两端行号以改前为准，落点可在选中区内部
+- 落点：1..总行数 = 该行之前；总行数+1、超界、-1/不填 ≡ 末尾追加；新建时任意合法值自然收敛为整体新建（fresh 特判枝已删，非法落点与已存在目标同规报错）
+- 编码继承：auto 且目标没有自己的字节（自复制/不存在/0 字节）→ 沿用源编码
+- 校验序：一切参数/落点校验在备份之前，报错零污染（比家族更严）
+- 家族口径差异（作者裁决"其他工具先不管"）：edit.py 四工具摘要"从X行变为Y行"与 insert_lines 落点域仍是旧列表口径（换行结尾文件比 copy_lines 真实行数多报 1）
+
+### read_lines / read_block / diff 输出协议（v1.8.0 三件套 + 折叠重设计）
+- `show_line_number=True` 输出顶部加 `行号 > 行内容` 图例头 + 空行（动机：多个 LLM 把 `N > 内容` 前缀误读为文件自带行号；False 模式/空文件不加）
+- 截断标记 **`<<<TRUNCATED>>>`**（行尾粘标记 + 4096 行内上限标记同步升格）；尾部说明 `\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。…`（空行分隔内容区/元信息区、说明行以标记开头）；元信息不占 max_chars 预算
+- max_chars 默认 **5000**（read_lines / read_block / diff / regex / regex_replace 统一；`end_col=2048` 是行内列宽、`LINE_CONTENT_TRUNCATE=160` 是列截断，均非总预算性质，不动）
+- diff 五机制：跳跃装填（超预算 hunk 折叠名片后继续尝试后续）/ 名片两态（a 给 start 指引、b 给可照抄建议值 max_chars=cost+500）/ 末位部分展开（线性装填到预算耗尽）/ max_line_length=600（min 100）行内截断 + 尾部汇总 / 双下限钳制（max_chars min 1000）
+- **hunk 头行尾序号 `@@ ... @@ #N`**（@@ 后注解位 = git 函数名惯例，合法 unified diff；序号↔start 翻页闭环）
+- CRLF/LF 行尾差异被 universal newline 吞掉误报"文件相同"→ 相同分支 `detect_file_newline` 比对行尾并提示（对抗复审 MAJOR 修入）
+- 会计 = 简单 len 累加 + 名片成本定值估算，允许小幅超支（作者拍板不纠结精确）；hunk 分组后须 `rstrip("\r\n")`（keepends 行尾符不清会致双换行 + 成本虚高）
+
+### regex / regex_replace 输出协议（v1.9.x）
+- `file_tools_regex` 输出 = 纯文本表格 `序号 | 行号,列号 | [组 |] 匹配内容`：捕获组展平（2+ 组每组一行、独立行号,列号；未命中组 `None`、零宽 `""`）；0/1 组隐藏「组」列（条件列）；多行匹配转义一行（`\n`/`\t`/`|`/`\`）；每行 260 字符上限；`max_chars`（默认 5000）整行停止不输出半行；`start`/`count` 按**结果行**分页（不是第几匹配）
+- **`re.MULTILINE` 默认开**（`^`/`$` = 每行首尾；整段绝对首尾用 `\A`/`\Z`）——跨行匹配不受影响（跨行靠 `"\n".join` 拼段后 pattern 内 `\n`，与 MULTILINE 正交）
+- `file_tools_regex_replace` `dry_run` 显示**模拟 diff**（`_diff_truncated`：unified diff n=1、按 hunk 边界截断到 max_chars、至少 1 个 hunk；dry_run 不写文件不备份）
+- **截断 footer 列出被省略 hunk 的 `@@` 头**（≤10 全列、>10 折叠为「列前 10」）——hunk 头天生自带旧/新起始行号 + 跨度，零计数器零语义混杂；⚠️ 禁止「完整 diff 请用 file_tools_diff 查看」死路指引（regex_replace 的 diff 是**内存模拟**，磁盘上不存在"修改后"文件；行动后验证的最短路径是直接 read_lines）
+- 教训：续读指引必须可操作 + 优先复用 diff 自带结构信息，别另起炉灶提取（入知识库《长输出截断与折叠协议设计》）
+- **description 盲测法**：无上下文 agent + 只给 description + 预测 → 实测 → 对比 + 结构化反馈（理解清晰度/预期差/多余缺失/加一句话/总评）；方法论入知识库《Agent工具文档设计与盲测验证》
 
 ---
 
@@ -97,10 +133,10 @@ return make_error("读取", "文件不存在")
 
 | 格式 | 工具 |
 |:----|:----|
-| 纯文本描述 | `listdir`, `diff`, `append`, `replace_lines`, `insert_lines`, `delete_lines`, `indent_lines`, `copy`, `move`, `trash`, `trash_undo`, `mkdir`, `undo`, `write` |
-| JSON | `info`, `guess`, `history`, `regex`, `read_bytes`, `find_bytes` |
-| 纯文本行号 | `read_lines`, `read_block` |
-| CSV | `find_bytes`, `replace_bytes` |
+| 纯文本描述 | `listdir`、`diff`、`append`、`replace`、`replace_lines`、`insert_lines`、`delete_lines`、`indent_lines`、`copy`、`copy_lines`、`move`、`trash`、`trash_undo`、`mkdir`、`undo`、`write`、`write_bytes`、`regex`（表格）、`regex_replace`（dry_run 含模拟 diff） |
+| JSON | `info`、`guess`、`history`、`read_bytes` |
+| 纯文本行号（图例头 + `<<<TRUNCATED>>>` 截断协议） | `read_lines`、`read_block` |
+| CSV | `find_bytes`、`replace_bytes` |
 
 ---
 
@@ -110,18 +146,14 @@ return make_error("读取", "文件不存在")
 `Literal["\\n"]` 中的 `"\\n"` 是 **2 个字符**（反斜杠 + n），不是换行符。
 `newline_map` 的 key 必须与 Literal 一致，否则 `open(newline=None)` 在 Windows 上默认转 `\r\n`，测试假通过。
 
-### 2. `config.agents` 不是列表
-`config.agents` 是 `AgentsConfig` 对象，不是列表，不要用 `for` 迭代。
-正确方式：`config.agents.profiles["default"].workspace_dir`
-
-### 3. 字节写入的 `_build_write_full_result` 双重包装
+### 2. 字节写入的 `_build_write_full_result` 双重包装
 `_build_write_full_result()` 已返回 ToolChunk，调用处不应再用 `make_success()` 包装。
 
-### 4. `from module import` 值绑定陷阱
+### 3. `from module import` 值绑定陷阱
 `from .database import LOCAL_TZ` 在模块导入时创建值绑定（copy），后续修改不生效。
 函数内部 `from .database import LOCAL_TZ as db_local_tz` 动态获取最新值。
 
-### 5. 备份路径硬编码
+### 4. 备份路径硬编码
 `get_session_dir()` 返回 `{ws}/file_tools_data`，所有会话共享备份目录。
 如需 session 隔离，需通过 QwenPaw 内核注入 session ID。
 
@@ -141,8 +173,8 @@ return make_error("读取", "文件不存在")
 `_write_json_atomic(path, data)` 使用 `.temp` + `os.replace` 原子写入。
 `files.json` 的写入（`_update_files_json` 和 `cleanup_old_backups`）均使用此函数。
 
-### 启动自动清理
-`cleanup_old_backups(days=30)` 通过 `register_startup_hook` 注册，每次启动时：
+### 惰性清理（v1.8.3 起，替代启动钩子）
+`cleanup_old_backups(days=30)` 由 `_maybe_cleanup()` 在**备份成功后**触发（`.last_cleanup` 时间戳 24h 限频）——原 `register_startup_hook` 启动清理在回合外必失败（ContextVar 未注入 → RuntimeError 被吞），已移除。清理内容：
 1. 扫描 `history/` 下的所有备份目录
 2. 超过 30 天 → `pytrash.recycle()`（回退 `os.remove()`）
 3. 空目录 → `os.rmdir()`
@@ -177,207 +209,5 @@ target_param="path",   # 指定 target 参数名（例外：copy_lines 用 "dst_
 - `file_tools_trash` / `file_tools_trash_undo` 依赖 `pytrash`
 - `file_tools_append` 不会自动插入换行符——如果文件末尾没有换行符，追加内容会直接接到最后一行后面
 - `file_tools_read_lines` 使用 `split("\n")` 分割行，空行和末尾空行均保留
-
----
-
-## v1.3.0 listdir 过滤改造（2026-09-05，已 commit）
-
-**特性总览**：新增 6 参数 `types`/`extensions`/`contains`/`regex`/`exclude`/`follow_symlink`；输出全正斜杠+目录尾斜杠；realpath 祖先链防环 + 断链警告；双上限（匹配 10000 / 检查 100000）；过滤统计 footer；482 测试，listdir 区域行覆盖 100% + 分支仅余结构不可达死弧。
-
-**核心语义契约**（改 listdir 必须遵守）：
-- 过滤器间 AND、列表内 OR；空列表/全空白/不可识别输入 = 不过滤；列表参数接受单值 str 与 JSON 字符串化数组
-- types 只控显示**不影响遍历**；遍历剪枝唯二来源 = exclude 命中目录、环检测
-- extensions：目录一律直通；后缀 = basename 最后点号后段（dotfile 无后缀、多后缀取最后段）
-- contains/regex 匹配**完整显示串**（所见即所搜；regex 底层 re.search、大小写敏感、`(?i)` 前缀、`(?i:…)` 局部组）；**子串可命中父目录名**（`tools/` 被 `file-tools/` 吞），限定目录用 `/utils/` 边界（顶层够不到）或 `(^|/)utils/` regex 锚定，docstring 已警示（联机回归教训）
-- exclude：v1.4.0 起 **gitignore 语义**（pathspec `from_lines("gitignore", ...)`，模式与路径均 lower、反斜杠转正斜杠）：裸名任意深度命中文件+目录、`dir/` 只命中目录、`/x` 锚根、`!` 豁免后到先中、目录命中=整树剪枝（剪后子项 ! 无法复活，与 git 一致）；注释行/空行自动忽略；**匹配对象=显示路径、绝不 realpath 解析链接**（三轮盲测钉死，穿透链接的同名内容不受被排目录波及）；非法模式（`!` 半截、`[z-a]`）有 try 守卫 → 中文报错（ValueError+re.error 双捕获）。已知折中：`\`→`/` 预转换使 `\#foo` 转义仅根层可表达；含斜杠旧模式（`*/tests/*`）锚定翻转，任意深度改写 `**/x/**` 或裸名。⚠️ 别用 "gitwildmatch" 工厂名（1.1 起弃用；0.12 里 'gitignore' 反而是弃用名，故下限锁 >=1.1）
-- 文案契约：listdir 分页/越界/start 报错/空目录一律称条目不称「文件」（TestEntryWording+迁移断言钉死）；sort 为稳定排序、平局保持收集次序不承诺可复现；目录 size Windows 恒 0——**均属运行时事实，v1.4.0 极简重写后不再写进 docstring**（禁回流词已锁，别拿旧版本文档当REFERENCE）
-- 警告后缀（环/断链）只在**输出阶段**拼接、不参与匹配与排序；警告行作为普通条目受全部过滤器管辖、无尾部保底汇报
-- 断链 = symlink 条目 stat 失败；symlink 条目必 stat（普通 file/dir 维持惰性）；根 realpath 有 try 守卫（失败退 resolved，仅失去环检测不崩）
-- 双上限常量放模块级 `_LISTDIR_MAX_MATCH/_LISTDIR_MAX_VISIT`，测试用 monkeypatch 压低复现
-
-**踩坑（承前编号）**：
-6. **通道字符串化数组参数**（联机验收事故）：数组以 `'["py"]'` 字符串送达时，原「str=单值」宽容把整串当一个字面量 token → 过滤器静默失真零报错。修复：`_listdir_as_str_list` 对 `[`/`{` 开头字符串先 `json.loads` 还原、失败退回字面量；`columns` 同享归一（旧版还有逐字符空转存量问题）。
-7. **monkeypatch 打桩 OS 函数还原晚于 tmp fixture 的 rmtree**：fake scandir 泄漏进 teardown 炸 TypeError；OS 桩用例一律 `try/finally: monkeypatch.undo()`。
-8. **手工行审计的盲区**：只收目标函数嵌套 code 会漏**模块级辅助函数**；行覆盖看不出 if 只走单边——需 coverage.py `--branch` 交叉。
-
-**Windows symlink/realpath 实测事实包**（3.13/管理员）：建目录链接需管理员或开发者模式；realpath 归一大小写、无 `\\?\` 前缀，裸 `==` 可靠（链接目标全大写写法仍归一回真路径）；`shutil.rmtree` 不跟随链接可安全清理环树；`DirEntry.is_dir/is_symlink` 对断链返回 False 不抛（stat 才抛）；防环必须用**祖先链** set（非全局 visited），两链合法复用同一目录不得误杀；无防环时 6 文件小树可虚增至 2400+。
-
-**覆盖率复测口令**（coverage 7.16.0 已装 qwenpaw 环境，未进 requirements.txt）：
-```powershell
-D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage run --branch -m pytest tests -q
-D:\Software\miniconda3\envs\qwenpaw\python.exe -m coverage report -m --include="tools/info.py"
-```
-
-**流程结论**：零上下文子 agent 对抗审查（抓到 5 bug：早退吞截断提示/all 顺序/断链丢弃等）+ 覆盖率审计（抓到审查没见的：根 realpath 裸调用、created_at 列零测试、非序列兜底）——**双管齐下**是发版前黄金组合。
-
-**未闭环**：①~~字符串化数组联机复验~~ ✅（1.3.0）；②作者的第二个新工具想法未公布；③工作区 scratch 留有 `cycle_proto/`、`review_scratch/`、`live_symlink_test/`（环树可复验用，三轮盲测靶场）；④~~v1.4.0 收口句待 commit+重装定稿~~ ✅（`412eebb`+`2625fbc`，装机 1.4.0，四轮盲测已实证收口句）。后续见 v1.5.0 节。
-
----
-
-## v1.4.0 文档极简重写 + absolute 移除 + gitignore 引擎（2026-09-05，三轮盲测驱动）
-
-**一日四连版本链**：v1.3.1（条目化文案）→ v1.3.2（输出预告，后被极简掉）→ v1.3.3（幽灵版，并入 1.4.0）→ v1.4.0（定稿候选）。
-
-**文档哲学转向（作者拍板，最重要决策）**：极简直觉化——agent 自带 ls/glob/gitignore 世界知识，docstring 每参数一句级、示例形态代替文字规则、边界由运行时输出（行内警告/统计行/中文报错）自解释。listdir 文档 2340→622 字符（-73%）。**三轮零上下文盲测实证成功**：8/10→8/10→8.5/10，最终 6/6 一次通过零试错，gitignore 直觉题（排树留同名文件）新人凭题目外的世界经验自创正解。方法论全文见小窝知识库《Agent工具文档设计与盲测验证》。
-
-**防退化三钉**：
-1. `test_docstring_minimal_contract`：8 必留词 + 7 禁回流词（所见即所搜/先校验/祖先链等注意事项类禁止再堆回 docstring）
-2. `TestEntryWording`：条目化运行时文案精确断言
-3. **换引擎 checklist**：同函数兄弟过滤器有的 try 守卫必须对称平移（F1 教训：exclude 换 pathspec 漏守卫，半截 `!` 英文 traceback 炸穿中文报错面，审查逮 MAJOR）
-
-**盲测换来的最终两句 docstring 事实**（v1.4.0 收口）：exclude「按显示路径匹配、不解析符号链接」+ 首段「输出路径相对遍历根」——凡新人自曝"在赌"的语义空白都值得一句钉死。C3（警告串塞 name 列机器使用要剥尾）维持 v1.3.0 行内警告裁决不改，仅记录。
-
-**依赖**：`pathspec>=1.1`（工厂名 `'gitignore'` 版本翻转坑，速查 §17）；qwenpaw/normal 环境均已自带。
-
----
-
-## v1.5.0 type 系统重做 symlink|X 复合类型（2026-09-05，四轮盲测驱动）
-
-**四轮盲测**（装机 1.4.0 含收口句，新人 6/6 零试错，8.5/10 平三轮）：C1/C2 收口句双双被逐字引用 credited（T3"照着它下的注"、T4 引首段拼路径）；T5 锚根 `/__pycache__/` 凭世界经验一次过（白嫖第二铁证）。批评 4 条核实全属实，其中 type 伪装比新人描述的更严重（见下）。
-
-**核心设计（作者四拍定稿）**：
-- type 值域 = **材质|目标** 两段复合：`dir` / `file` / `symlink|dir` / `symlink|file` / `symlink|invalid`；普通目录列值 directory→dir 简写统一
-- types 过滤 = **分段匹配**（token 命中任一分段即保留）→ `["dir"]` 含活目录链、`["symlink"]` 活死链一网打尽；词表严格三词，**别名制度废除**（directory/link 报错）、**`all` 退役**（不填/空=全部）；invalid 只做显示不做过滤 token
-- **尾斜杠**：目标可达且为目录→恒带杠（含 follow=False 与环条目）；断链不带。两维正交：type 答材质、斜杠答目标形态、follow 答进不进、警告答遍历事故
-- 环警告统一「循环符号链接」去中英混排；E4 path 补「支持绝对路径」（**仅 listdir 试水**，其余 25 工具未动，推广与否看五轮考卷）
-- 修掉了四轮批评②的根因：follow 时目录链接 type 曾报 directory，`types=["symlink"]` 静默漏活目录链
-
-**实现红线**：`_entry_type` 返回 (type串, stat)，链接条目必跟随 stat（与 gather 共用）；**遍历递归判断走 `etype=="dir" or (etype=="symlink|dir" and follow_symlink)`，绝不跟 type 串的显示语义走**。
-
-**契约换钉**：必留 8 词（+`命中类型任一分段`、`绝对路径`；−`只影响显示`、`别名`）；禁回流 11 词（+`别名`/`all=不过滤`/`只影响显示`/`invalid`）。490 测试全绿；文档 622→599 字符（退役制度反而省字）。
-
-**遗留观察（五轮实测后终裁，作者拍板维持现状）**：`symlink|dir` 含裸 `|`，Markdown 表格列会被它劈开视觉列（同族 C3 裁决记录在案）。**五轮抽查（7/10，4过1部分）三条设计批评全部裁决"不修"**：①invalid 查询墙（`["invalid"]`/`["symlink|invalid"]` 均拒、警告文字不进过滤，"只要死链"需 symlink 过滤+type 列眼看）=作者裁决"不考虑 invalid 的清单，就这样"，接受为设计成本——报错句"任一分段即保留"被指"邀请函"也一并维持；②`types=["dir"]` 含目录链接与 `find -type d` 直觉**相反**（世界知识核对第 3 项交卷结果），分段匹配既定卖点，补句不加；③follow=True 默认"越界"、活目录链默认零标识、两警告文案不对称——全记录不实施。**教训入库**：五轮证明文档+输出的自愈力（新人靠双数字与 type 列完成 4/5），但也首次暴露"输出词表≠查询词表"是真实摩擦面——未来新工具设计时词表一致性要主动评审，别等盲测逮。
-
-**已修（v1.5.1）**：`format_error` 句尾「。」去重——五轮批评🥉，排查发现全仓 **39 处** reason 自带句号曾拼出"。。"（历史上仅 diff start=0 一处局部补丁没修根），源头归一+钉死；顺修 test_history 存量 `open().read()` 句柄泄漏恢复 -W error 零警告。491 测试全绿；覆盖复查：本轮全部新增代码区域零漏覆。
-
-**未闭环**：①~~v1.5.0 待五轮抽查~~ ✅（五轮 7/10 按设计落地）；②~~v1.5.1 待 commit+重装~~ ✅（`7916764`+作者装机）；③盲测周期收官——8→8→8.5→8.5→7（五轮为压力探针卷，分数不可与常规卷直比），file-tools 盲测线可停；④~~第二个新工具想法未公布~~ ✅（copy_lines，见 v1.6.0 节）；⑤scratch 三目录清理裁决仍挂着；⑥其余 25 工具 path 描述是否推广"绝对路径"句式，留待将来（listdir 已试水）。
-
----
-
-## v1.6.0 file_tools_copy_lines 跨文件行复制（2026-09-05，第二个新工具落地）
-
-**动机**：行内容搬运不经过模型上下文（旧路 read_lines+insert_lines 接力费 token 且转录易飘）。首段 docstring 钩住该直觉。
-
-**作者裁决**（方案评审定稿+当日修订，全落实现+钉测）：start/end_line 编辑家族语法；src_encoding/dst_encoding 双参数；dst 父目录自动创建；不做多段选择；src/dst_line_separator 双参数；insert_line 名+1-based+"1=开头"提示；src_file/dst_file 参数名；**dst_file=None=自复制**；**insert_line 超总行数与 -1 同意自动追加**（十裁决原案"越界从严报错+指引句"被作者当日推翻——越界=追加后空文件特判也随之消失，修订后指引句删除）。
-
-**核心语义**：
-- 自复制：dst=None 或 normcase 路径恒等；两端行号以改前为准，落点可在选中区内部（编辑器粘贴语义，快照无别名）；只备份一次
-- ~~**记账空行不对称（作者裁决）**：源侧选中域排除末尾换行的记账空行（空文件"共 0 行"报错）；目标侧 insert 域含之~~ ⚠️ **v1.6.1 list 模型整体作废**：两侧同一套真实行号，行数=len（含末尾空行），详 v1.6.1 节
-- 校验序：一切参数/落点校验在备份之前，报错零污染（比家族更严，家族 start_line 超界在备份后才查）
-- 编码继承链：新建/空文件 dst auto→沿用 src 探测编码；已存在 dst auto→检测自身；显式 dst_encoding 即转码
-- strict 拆行（src_line_separator 显式）= 仅按指定序列拆行、其余换行符保留进行内容；写回前 `content.replace("\r\n","\n")`（dst 显式 \n 除外）防 newline 转换叠 `\r\r\n`
-- **目标行尾保真（作者第三裁决，覆盖第二裁决）**：专卷现场逮到"LF 靶档被 auto 写回整体转 CRLF"后实验钉死机制——**Python 文本模式读 newline=None 是通用换行翻译（原文件行尾读到即失真）、写 newline=None 只认 os.linesep 完全无视文件历史**，家族 read+重写必然 Windows LF→CRLF。裁决：`dst_line_separator=auto`+目标有内容 → 先 raw 读探测**目标文件主行尾**（`_detect_file_newline`/`_dominant_newline`，多数者、平局 CRLF 优先、探测失败按无行尾）并跟随写回，复制内容同步换装；自复制目标即源（跟随 src_sep，含显式参数值）；新建/空/无换行落回 OS。**家族推广已拍板**：作者裁决"保持目标主行尾"**推广到其余 24 工具**，但排期在当前工具完全验证通过之后（潜在 v1.7.0，动 edit.py 等读面=原始读+探测，影响面大单开版本；知识库《编程技巧速查》§20 已备配方）
-- ~~fresh（目标不存在）忽略 insert_line（0/999/None 皆可）~~ ⚠️ **v1.6.1 特例扫荡删落点特判**：空基线一切合法落点自然收敛为整体新建，非法落点与已存在目标同规报错；~~末尾补换行只对真新建执行~~ ⚠️ **v1.6.1 起补换行特判删除**，文件末尾状态由所选数据镜像（详 v1.6.1 节）；空文件目标无需特判——读入基线恰为 `[""]`，任意落点插入后 join 自然产出规范换行（当日 insert 修订的红利）
-
-**对抗审查战果（零上下文子 agent，544 绿基线上打穿 4 漏）**：
-- 🔴 M1 strict×auto 写回 `\r\r\n` 字节腐蚀（钉测只钉了对侧 dst="\n"）→ 折叠防御+回归钉
-- 🟠 M2 单空行新建 content 假值跳换行→0 字节+谎报"共 1 行" → 去 `and content`
-- 🟠 M3 空 dst"视为新建"但编码走 chardet 落空 utf-8 与真新建分裂 → 继承 src
-- 🟠 M4 samefile 把"指向 src 的链接"判成自复制但 os.replace 实际掀链接（文案与效果分裂）→ **裁决弃 samefile 纯 normcase 恒等**（规格原文只裁决"实际同路径含大小写"，链接场景交家族路径级行为）；删对侧旧测试
-- 🟡 已处理：m3 fresh 忽略语义入 docstring+钉、m5 文档计数 26→27 全家（README/AGENTS/plugin/MEMORY/show_tool_schema+重新生成 tools_schema.json 27 个）、m6 撤 conftest 死补丁（copy_lines 不 import get_session_dir 无需挂）
-- 🟡 维持现状（家族一致性优先，记录在案）：m1 写回失败留 .temp_file 残件（_write_file 家族通病）、m2 fresh"共 K 行"内容口径 vs 既有"从 M 行"记账口径之差（家族 legacy 口径）、m4 strict 嵌入换行破预览版式（纯观感）
-
-**审查教训**：新工具测试全绿 ≠ 组合空间安全——M1-M4 全活在"钉测组合的对侧"（换 dst 行尾/换 ASCII 内容/换文件系统语义）。**测试矩阵要跨参数维度做笛卡尔抽查**，下次出卷直接带"钉测对侧"清单题。
-
-**发版链**：491→554 测试（新模块 63 个，行覆盖 99% 余双模式导入死弧）→ plugin.json 1.6.0 + CHANGELOG + schema 重导 → 重装 1.6.0 → **copy_lines 专卷盲测（第六轮，新工具首卷）**：6/6 全过、零意外失败、自评 8/10（首卷即达 listdir 常规卷分段 8~8.5）。考点全中：收口句六处逐字引用（"**超过总行数与 -1 同意**"直接支撑超界题、当日修订即被新人引用实证；"dst_file 留空=自复制，两端行号均以修改前为准"支撑省略参数下注）；新人自创「借 +/- 预览当只读通道」侦查法（工具无读面时的运行时自解释红利）；M2/M3 修复被实战点名通过（复制空行不被吞、探测新建文件 GBK 编码自动沿用）。**批评处置**：☠幻影空行计入"从X行变为Y行"口径（真实，家族 legacy，src"共0行"与 dst"共N+1"双标被点破）→**作者终裁维持**（"末尾有换行，那也是换行"——dst 落点域含幻影行是有意设计，与 src 选中域排除之构成不对称裁决一体两面）；☠"请调用 file_tools_undo"对无 undo 环境画饼→考卷侧裁剪产物（真机 undo 同插件恒可用），不修；⚠"留空"三义（省略/null/""）——""会报"不是文件"可自解释，不修；⚠三参数越界行为不对称=作者已裁决设计，新人靠逐字句用对，不修；⚠预览空行无视觉重量=家族版式，记录。**审查盲区发现→第二裁决落地**：复盘字节时逮到"LF 文件被 auto 写回整体转 CRLF"（新人无读工具看不见）；作者裁决**自复制**双 auto 复用源真实设定（编码本已如此，行尾新增 `_dominant_newline` 主行尾跟随，显式参数则跟参数、无换行落回 OS）；**跨文件仍家族 OS 口径**，残余悬案②（入已知限制 or 推广家族"auto=保持目标主行尾"）待终裁。→ **第三裁决落地（目标行尾保真，见上）**，悬案②在 copy_lines 范围内定案、家族推广=已拍板排后；复测 564 全绿（行尾保真 10 连钉含探测失败兜底）覆盖 99%。→ commit 由作者（建议 msg：`v1.6.0: add file_tools_copy_lines`；工作区当前含 8a18443 之后的第二+第三裁决修正增量）。
-
-**第七轮复核卷（2026-09-05，对 f008285 装机版，收官通过）**：A 联机冒烟 11 场景字节级全绿（LF 自复制/跨文件保 LF、新建 OS 口径、超界追加、**CR 老麦与 mixed 主行尾两个"已钉未联机"项补证、strict×auto 双目标零 `\r\r\n`、M2/M3 联机）；B 564 全绿；C 零上下文盲测 1 新人六题（对照 2/探针 3/应变 1）全部完成零报错、自评 **8/10 与六轮持平**——三裁决收口句被逐字引用（「保持目标文件主行尾」直接支撑 T3 老麦文件"全参数故意不填"下注），新人自创「全量切片复制探针当只读通道」（比六轮 diff 预览法更进一步）；D 盲测后字节巡检全部 exact match（T3 赌注兑现）。**批评处置**：🥉 幻影行报数跨调用矛盾（-1.5 主扣分）→ 触发本版模型转向裁决；⚠「超过总行数与 -1 同意」黑话 → N+1 转正后句义无损维持；undo 画饼/"留空"三义 = 旧裁决复采不修。考卷瑕疵记录：T2 恒等变换出题失误（新人识破拒绝重复复制=正确应变）、T5 报错探针被 T1 累计状态吞掉（主对话机补测通过）。
-
----
-
-## v1.6.1 copy_lines 行模型转向：list 模型（2026-09-05，作者第四裁决）
-
-**缘起**：第七轮复核通过前夜，作者否定了"批评🥉维持现状"方案，先追问无末尾换行文件的行为（实测：模型自适应、第二裁决恰好抹平两种形态——但"巧合收敛"不如"定义成立"），继而拍板换模型：分隔符模型（`"\n".join` + 幻影记账）整体退役。
-
-**模型公理**（全部钉死）：
-- `split("\n")` 每个元素都是**真实行**；文件末尾换行对应的那个 `""` 就是一行空行（编辑器末行光标站的真实位置），**行数=列表长度**，减法/排除/不对称等特判全部删除——第六轮「末尾有换行，那也是换行」终裁的记账含义被字面化：那一行从此就是行
-- **新建不补换行**：文件末尾有无换行完全由选区数据镜像（含源末尾空行→规范结尾；止于中途行→裸尾）；0 字节文件=一行空行、空行的终止符随其自带 → **M2"复制空行不被吞"升级为模型公理**，无需任何保护逻辑
-- 落点域两种文件形态同构：1..总行数 = 该行之前；总行数+1、超界、-1/不填 ≡ 末尾追加（保留换行结尾文件的"填回末尾空行"落法——`dst_total-1 if base[-1]==""` 公式一字未动，语义从"插幻影前"正名为"填入末尾空行槽位"）
-- **模型分辨（非 bug）**：对已存在的 0 字节 dst 追加 = "内容\n"（它的末尾空行让位行尾），同数据真新建 = 裸尾"内容"——基线不同源不同果
-- 写回三裁决**原样保留**：编码继承链、目标主行尾保真（`_dominant_newline` 探测/自复制跟 src_sep/strict 折叠防 `\r\r\n`）、新建/空/无换行落回 OS
-- **家族口径差异（作者裁决"其他工具先不管"，记录在案）**：edit.py 四工具摘要"从X行变为Y行"与 insert_lines 落点域仍是旧列表口径（换行结尾文件比 copy_lines 真实行数多报 1）；copy_lines 预览里末尾空行行号（如 `  9 >`）按作者指示"真实行状态 diff，不需管太多"原样保留
-- **docstring 一字未动即在新模型下自洽**（"超出总行数取末尾/共 N 行/与 -1 同意"全部收口句原语义成立）——极简契约钉测原样通过，这是 v1.4.0 极简哲学的最强背书案例
-
-**改造成本**：工具本体两处（源域减法删除、fresh 补换行删除），插入落点/写回/预览逻辑零改动；测试 564→565（11 处旧钉按新模型重钉 + 新增：末尾空行可入选区正反钉、新建裸尾/含末尾空行两向钉、空源=一行公理钉、M2/M3 语义钉改写）。
-
-**特例扫荡（同日增补，作者令"看看能不能都拔掉奇怪的特例"）**：逐 if 普查"定义 or 旧模型残留"——
-- **拔掉 4 处**：① fresh 补换行特判（模型转向时已删）；② 编码继承三处分支并一规则「auto 且目标没有自己的字节（自复制/不存在/0 字节）→ 沿用源编码」（M3 补丁痕迹折叠进正向规则，零 diff）；③ 行尾探测删 `not empty_dst`（0 字节探测自然得 None→OS，特判冗余，零 diff）；④ **落点 fresh 特判枝删除**——`if fresh: insert_pos=0` 退役，空基线下合法落点自然收敛、非法落点（0/负数）与已存在目标**同规报错**（唯一受控行为收口：原 m3"新建宽容忽略"改"新建同规校验"，docstring「目标新建时忽略」随枝删改为「新建时任意合法值自然收敛为整体新建」，必留短语同步换钉）
-- **保留 4 处"看着像特例实际是定义"**：追加落末尾空行之前（末尾风格保持的定义）、`follow = src_sep if self_copy else 探测`（strict 自复制字节级还原的供养者——显式拆行序列留在行内容的 `\r` 必须靠写回行尾=拆行序列对齐复原）、`\r\n→\n` 写回折叠（M1 物理护栏，显式 `\n` 因写侧不转换而豁免=已最小化）、start 报错/end 钳位（家族编辑语法）
-- 扫荡后不变量：**全函数没有任何一行"因目标文件形态而绕开主公式"的代码**；565 全绿、--branch 99% 零可达 miss
-- **方法论**：模型转向后回来扫特例是固定动作——旧模型的补丁在新公理下常常已是冗余（本工具 5/9 特例可自动消解）；判别标准一句话：*"这个 if 是在表达语义，还是在替分隔符模型擦屁股？"*
-
-**新会话续接口令（v1.7.0 阶段，已被文末 v1.8.0 节接替）**：读本节。**v1.7.0 已闭环（2026-09-05），项目无代码挂账**：家族行尾保真落地（edit.py 6 RMW + write 按「保持旧文件主行尾」案；append 有意豁免并钉 `TestAppendIntentionalDivergence`；`dominant_newline`/`detect_file_newline` 下沉 utils；折叠守卫上移 `_write_file` 中央，顺带修复 replace/regex_replace 的 new_text/replacement 直通道可叠 `\r\r\n` 的潜伏 bug——旧 docstring"写回自动统一"承诺自此成立；POSIX 反向失真 CRLF→LF 同修）。610 测试全绿（旧 565 零翻案——旧套件从未钉过 auto 的 OS 字节）、coverage 与基线持平（edit.py 75%/97 miss 为存量欠账，99% 口径历来只圈新模块；**基线对比法=`git archive HEAD` 解包跑对照**）。commit=`3239cfd`(v1.6.1)+`b6bfe96`(v1.7.0)；装机 1.7.0 四文件 blob 逐字节核验，**联机 16 场景字节全绿**（含作者追问后补证「已钉未联机」三件套：mixed→多数者 CRLF、空文件 auto→OS、write 探测失败兜底→OS——教训：**交付报告前自查钉测与联机的差集**，第七轮补证规矩适用于每一轮）。六靶场（copy_lines_exam/cycle_proto/live_symlink_test/review_scratch/scratch_copy_lines/scratch_v170_smoke）已回收站；README 已同步 v1.7.0（「行尾与编码」节）且已 commit=`eb1034b`；本节融合更新为最后挂账（作者收妥即全绿收官）。行数字口径分裂（edit.py 摘要旧列表口径）仍为另案。
-
----
-
-## v1.8.0 read_lines 输出格式升级（2026-09-12，作者拍板三件套）
-
-**改动**：①**图例头**——`show_line_number=True` 时输出顶部加 `行号 > 行内容` + 空行（动机：作者实测**多个 LLM 把 `N > 内容` 前缀误读为文件自带行号**，图例让格式自解释；False 模式/空文件不加，空文件恒空串）；②**截断协议**——`<<truncated>>` → `<<<TRUNCATED>>>`（行尾粘标记 + 4096 行内上限标记同步升格），尾部说明改 `\n\n<<<TRUNCATED>>>内容已超出 max_chars=N 限制。…`（空行分隔内容区/元信息区、说明行以标记开头；对齐 agentscope 生态大写惯例——长时记忆中间件 `<<<TRUNCATED>>>` 为家族唯一先例；**查证事实：内置 agentscope Read 无总预算无尾部提示**，`{i:6d}\t{content}` + 超长行 `[truncated]`）；③**max_chars 默认 2048→5000**（2048 实测连续触发续读 round-trip，5000≈2k token 克制）。
-
-**范围纪律**：仅动 `file_tools_read_lines`。read_block（同款旧文案旧标记）与 regex/utils 共享助手的 `<<truncated>>` 不跟随，另案。元信息（图例/尾部说明）后拼接不占 max_chars 预算（与 v1.7.0 尾部说明口径一致）。
-
-**测试**：610→614 全绿（-W error 零警告）。新增 4 钉：图例头（True startswith / False not in）、截断尾部新格式（startswith 图例 + `\n\n<<<TRUNCATED>>>内容已超出`）、默认 5000 上下界（4500 不截断/5500 截断）；test_padded_line_numbers 适配图例三行结构。版本 plugin.json 1.7.0→1.8.0（输出协议变化=minor）；CHANGELOG 已加条目。
-
-**read_block 跟随（2026-09-12 深夜第二批，作者拍板）**：三件套同步到 `file_tools_read_block`——图例头（True 有/False 无）、行尾切断标记升 `<<<TRUNCATED>>>`、尾部说明与 read_lines 同款、默认 max_chars 2048→5000；**end_col 默认 2048 保持**（行内列宽与总预算性质不同，不扩展）；空文件在 read_block 本就报「文件为空」错，图例空输出分支天然不可达（`and output_lines` 守卫保留作对称防御）。测试 614→617：新增图例 True/False 钉、默认 5000 上下界钉（约 4300/5300 字符窗口）；offset_beyond_line 适配图例三行结构；TestReadBlock.test_max_chars 由双条款 or 含糊断言升格为显式断言。
-
-**diff 与 DEFAULT_MAX_CHARS 全仓统一（2026-09-12 深夜第三批，作者拍板"max_chars 默认都改 5000"）**：`file_tools_diff` 签名+docstring 2048→5000（全仓最后一个 max_chars=2048）；`utils.DEFAULT_MAX_CHARS` 2048→5000（`make_result` 默认参数——当前唯一调用方 diff 显式传参故实际不生效，纯防未来）；**保持不动**：`CSV_FIELD_TRUNCATE=2048`（JSON/CSV 单字段截断）、read_block `end_col=2048`（行内列宽）、`LINE_CONTENT_TRUNCATE=160`（列截断）——均非「返回内容总预算」性质。max_chars 家族终态：read_lines / read_block / diff 三工具全部 5000。617 全绿不变。
-
-**CSV_FIELD_TRUNCATE + DEFAULT_MAX_CHARS 退役（2026-09-12 深夜第四批，作者拍板"两个都清理掉"）**：调查实锤生产路径零触发——CSV_FIELD_TRUNCATE 唯一消费点 format_csv 字段截断分支，但全仓仅有的 2 个调用方（find_bytes/replace_bytes，bytes.py:305/:428）字段值全为 int offset，字符串分支不可达；DEFAULT_MAX_CHARS 唯一消费点 make_result 默认参数，唯一调用方 diff（info.py:639）显式传参、测试也显式，连测试路径都不经过（对比：CSV_FIELD_TRUNCATE 至少还有 test_field_truncation 间接养着）。处置：两常量删除；format_csv 截断分支删改 `writer.writerows(rows)`（纯格式化器）；make_result 默认参数改必传（显式优于隐式，未来调用方必须想清楚预算）；连带清 10 处死导入（info.py 3 名字×2 块、read.py 2 名字×2 块）；test_field_truncation 反转为 `test_field_truncation_removed` 防复活钉（5000 字符原样输出）。常量区仅剩 `LINE_CONTENT_TRUNCATE=160`（truncate_line 用，列截断性质，未动）。617 全绿不变。
-
-**diff 输出折叠重设计（2026-09-12 深夜第五批，作者逐轮拍板）**：`file_tools_diff` 五机制落地——①跳跃装填（超预算 hunk 折叠名片后继续尝试后续）；②名片两态（情况 a"超出剩余预算"给 start 指引 / 情况 b"超出上限"给可照抄建议值 max_chars=cost+500）；③末位部分展开（方案乙：选中集最后 hunk 线性装填到预算耗尽+"仅显示前 X 字符"——**行级折叠（首尾保留+中间折叠+行号推算）经讨论后否决**：max_line_length 落地后其复杂度失去存在理由）；④max_line_length=600（min 100）行内截断+尾部汇总（元信息不占预算）；⑤双下限钳制（max_chars min 1000）。**hunk 头行尾序号 `@@ ... @@ #N`**（@@ 后注解位=git 函数名惯例，合法 unified diff；序号↔start 翻页闭环）。**make_result 随之退役删除**（TestMakeResult 删除）。会计=简单 len 累加+名片成本定值估算，允许小幅超支（作者拍板不纠结精确）。测试 617→624（diff 新钉 9）。**修复潜伏 bug**：hunk 分组 keepends 行尾符未清，新拼装二次加 \n 致双换行+成本虚高——分组后 rstrip("\r\n")。
-
-**无上下文子 agent 对抗复审（第五批收尾，FAIL→修复全过）**：0 CRITICAL / 3 MAJOR / 7 MINOR。MAJOR-1 末位部分展开缺预算检查（shown=0 退化 + used 越界）→ 修：前置"@@头+首行放得下"检查，放不下降级名片/兜底（讨论时想过、实现时漏掉的典型）；MAJOR-2 CRLF/LF 差异被 universal newline 吞掉误报"文件相同"→ 修：相同分支 detect_file_newline 比对行尾并提示；MAJOR-3 会计零测试 → 修：账本断言 len(text) ≤ max_chars+250。MINOR-1/2/3/4/6 修（cost 含 #N 后缀、部分展开计空行+说明行、两态统一建议值、截断统计只计输出、@@ 行尾 re.M）；MINOR-5/7 记录不修。复审数学发现：min hunk cost（@@+6ctx+1对改动 ≈ 100）> hidden 后最大剩余（<68）→ **下限 1000 钳制下 hidden 后不可能再有展开**，兜底汇总恒为连续尾部区间，count=span 恒精确。复审修复后 623 全绿（-W error）。
-
-**踩坑（承前编号）**：
-9. **图例行 + 空行 = split 后第二元素是空串**：钉 `lines[1]` 时想当然以为紧跟内容行；strip().split("\n") 后图例、空行、内容各占一行，空行本身就是一行元素（第一版钉错被测试当场逮住）。
-
-**待办**：①作者 review + commit **8 文件增量**（read.py / utils.py / info.py / test_read.py / test_utils.py / test_info.py / CHANGELOG.md / MEMORY.md——read_block 批+diff 批+死常量清扫批+diff 折叠重设计批；第一批 read_lines 三件套已由作者 commit=`4a6ac6d`）；②~~read_lines 联机冒烟~~ ✅（2026-09-12 当晚作者重启后联机 5 场景全绿）；③~~read_block + diff 联机冒烟~~ ✅（2026-09-13 凌晨作者重装后联机 9/9 全绿：read_block 3 发（图例/截断新协议/无图例）+ diff 6 发（行尾序号头/跳跃装填名片b+后续展开/行长截断+汇总/count=1部分展开/CRLF-LF行尾提示/修正数据后名片b复验））；④README 无需动；⑤~~diff 折叠重设计待无上下文子 agent 复审~~ ✅（FAIL→3 MAJOR+5 MINOR 修复全过，623 全绿，详见第五批复审段）。剩余观察：图例对 LLM 误读的矫治效果需日常使用中积累。
-
-> **新会话续接口令（收工态 v1.8.0）**：五批改动全部落地——read_lines 三件套（已 commit=`4a6ac6d`+联机 5 场景）+ read_block 批 + diff/常量批 + 死常量清扫批 + diff 折叠重设计批（8 文件增量待作者 commit）；复审闭环（FAIL→修复全过）+ 联机 14 场景全绿。无代码挂账。观察项：图例矫治 LLM 误读的日常效果、read_block 行级折叠否决后若需部分视野再议。
-
-
----
-
-## v1.9.x regex 表格重构 + regex_replace dry_run diff（2026-11-11，作者主导）
-
-**v1.9.0 `file_tools_regex` JSON→表格**：动机=旧 JSON（`{total_matches, matches:[...]}`）token 开销大、agent 扫读不直观。新格式 `序号 | 行号,列号 | [组 |] 匹配内容`：捕获组展平（2+ 组每组一行、独立行号,列号；未命中组 `None`；零宽 `""`）、0/1 组隐藏「组」列（条件列）、多行匹配转义一行（`\n`/`\t`/`|`/`\`）、新增列号（组起始 1-based）、`max_chars`（默认 5000）整行停止不输出半行 + 每行 260 字符上限、`start`/`count` 语义从「第几匹配」改「第几结果行」。TestRegex 全量重写。
-
-**v1.9.1 `file_tools_regex_replace` dry_run 显示模拟 diff**：动机=旧 dry_run 只输出「匹配到 N 处，将替换 M 处」统计，agent 执行前无法预览改动。实现=新增 `_diff_truncated` helper（unified diff n=1，按 hunk 边界截断到 max_chars，至少 1 个 hunk）；模拟替换计算提前到 dry_run 之前（两路径共用）；dry_run 不写文件不备份；新增 `max_chars` 参数（默认 5000）。
-
-**复审（两个无上下文子 agent 对抗复审，代码 PASS + 测试覆盖有缺口）**：
-- 修 `_diff_truncated` 引用赋值 bug：`parts = header_lines` 同一对象 → 截断条件 `len(parts) > len(header_lines)` 永远 False → 改 `list(header_lines)` 拷贝（测试当场逮到）
-- 修 `max_chars` 无下限校验（负数/0 未拒绝）→ 加 `max_chars < 1` 报错
-- 测试缺口补齐：非 dry_run diff 零断言（HIGH）、max_chars 恰好不截断/恰好截断边界（HIGH，**预算口径 `len(l)+1` 比 `"\n".join` 输出长恰好 1**——不截断边界=diff_len+1）、至少 1 hunk 守卫 + 截掉 hunk 整块不出、start/count 交互、行数增加方向、反向引用展开
-- 清理 6 处误放重复测试（`test_mixed_whitespace`/`test_shrink_partial` 在 7 个 Test 类各一份完全相同副本，删 6 处留 TestIndentLines 正确归属）
-- 646→636 全绿（删 12 个重复测试）
-
-**⚠️ 未定案：`_diff_truncated` 截断 footer 死路 + 方案 C 讨论中（2026-11-11 晚，泰斗先生指出）**：
-- **问题**：截断 footer「完整 diff 请用 file_tools_diff 查看」是**死路**——`file_tools_diff` 只能对比磁盘上两个文件，regex_replace 的 diff 是**内存模拟**（磁盘上不存在"修改后"文件）。泰斗先生指出「file_tools_diff 并不能显示差异」。
-- **泰斗先生核心洞察**：regex_replace 是**行动**——行动完文件就变更了，agent 验证的最短路径是**直接读文件**（`file_tools_read_lines`），不是看完整 diff。
-- **方案**：A=改 footer 文案（增大 max_chars）/ B=省略 footer 只留标记 / **C=泰斗先生倾向**：前半显示 diff（达 max_chars 预算），后半省略，**单纯显示更多变更行的行号**。
-- **方案 C 细化（小音提出，泰斗先生「还需要考虑下，感觉不太 ok」未定案）**：行号提取=扫描隐藏 hunk，**双行计数器**（`+` 行记**新文件**行号→行动后直接 read_lines 核对；`-` 行记**旧文件**行号→纯删除场景）；区间压缩（连续 ≥3 行压 `13-18`）；footer 自封顶（行号条目超 ~30 个时前 20 + `…等 N 处`）。泰斗先生质疑「纯删除为什么无法显示」→ 小音澄清：能显示，`-` 行带旧文件行号，双计数器方案信息完备。
-- **最终方案（2026-11-11 晚定案，作者拍板「复用 hunk 头」）**：放弃方案 C 的「自提取变更行行号 + 双计数器」——太重（要区分 `+`/`-`/上下文行各自怎么计数，分支多易错，footer 新旧行号语义还混杂）。改为**截断时 footer 直接列出被省略 hunk 的 `@@` 头**（`@@ -old,n +new,m @@`）：每个 hunk 第一行天生自带旧/新起始行号+跨度，纯删除是 `+0,0`，**零计数器、零语义混杂**；最多列 10 个头，超出折叠为 `（列前 10）`。footer 形态：`<<<TRUNCATED>>> 省略 N 个差异块：@@ -13,6 +13,6 @@ / @@ -5,3 +0,0 @@`。实现=改 `_diff_truncated`（截断时收集 `hunks[i:]` 的首行 `@@` 头拼接，≤10 全列、>10 折叠）；测试改 `test_dry_run_max_chars_truncation`（断言死路指引已移除 + 截掉 hunk 整块不出）+ 新增 `test_truncated_footer_lists_hunk_heads`（40 hunk 触发折叠、footer 固定 10 头）；637 全绿。教训入知识库《长输出截断与折叠协议设计》「续读指引必须可操作 + 优先复用 diff 自带结构信息，别另起炉灶提取」。
-
-**未 commit（10 文件，作者 review 后提交）**：edit.py / test_edit.py / read.py / test_read.py / CHANGELOG.md / MEMORY.md / README.md / AGENTS.md / plugin.json / plugin.py。zip 在 `regex_test\qwenpaw-plugin-file-tools-v1.9.1.zip`。
-
-### 三子 agent 复审 + MULTILINE 行为改动（2026-11-11 晚，footer 落地后）
-
-**三个无上下文子 agent 并行复审**（A 对抗复审代码 / B 测试覆盖 / C 体验盲测"开发者视角"）：
-- **A PASS**（代码正确性零问题）：截断条件、首 hunk 守卫、`truncated_heads = hunks[i:]` 切片（预算扫描 1~3000 验证 `shown+omit==total` 不重不漏）、footer 格式（≤10 全列/>10 折叠）、两路径共用 `diff_text`（edit.py:773）全过。2 个 docstring 措辞瑕疵（已修）：①`max_chars` 说"总字符上限"但 footer 是 `parts.append` 不受约束 → 改"footer 本身不计入 max_chars 预算"；②"纯删除为 +0,0"举例不准 → **实测 +0,0 只在整文件删空时出现，而删空只有 1 个 hunk 不截断（单 hunk 守卫全输出）→ footer 里永远不会出现 +0,0**，删除末尾段实际是 `@@ -10,6 +10 @@`（new 侧=保留行位置），故 docstring 删掉 +0,0 提法
-- **B 有缺口**（实现无 bug，纯函数行为全实测符合 docstring）：折叠边界恰好 10/11、省略数 N 精确值、单 hunk 超预算守卫、非 dry_run 截断 footer——**已全补**（用实测值锚定：gen(11)+mc=50→省略 10 全列、gen(12)+mc=50→省略 11 折叠、40 hunk mc=500 该构造 N=29、单 hunk mc=100 完整输出无 footer）
-- **C 体验：好用**（开发者零学习成本，unified diff + hunk 截断 + footer 列 @@ 头"改了哪里/改多少/截断部分在哪"一目了然）。挖出**真问题**：`^`/`$` 行锚点静默失效——`re.compile` 没开 MULTILINE，整段拼接匹配，`^` 只指文件首行、`$` 只指文件尾行，用户写 `^debug = true$` 匹配中间行直接报"未找到匹配"且无提示。**C 另报"dry_run/实际执行 diff 路径不同"系误报**（抽验 edit.py:773 证伪：两路径共用 `diff_text`，都截断）——再次印证"复审结论须抽验"
-- **MULTILINE 修复（作者拍板"默认开"）**：`file_tools_regex`（read.py:312）+ `file_tools_regex_replace`（edit.py:702）的 `re.compile(pattern)` → `re.compile(pattern, re_module.MULTILINE)`。**关键：跨行匹配不受影响**——跨行靠 `"\n".join` 拼段后 pattern 内 `\n`，MULTILINE 只动 `^`/`$`（从整段首尾变每行首尾），两者机制正交；整段绝对首尾用 `\A`/`\Z`。docstring 同步（`\A`/`\Z`/`\n` 用 `\\` 转义避免 SyntaxWarning，跟文件现有 `\\1`/`\\r\\n` 风格一致）。实测 `^debug = true$` 匹配中间行成功
-- **测试**：637→645（+MULTILINE 5：test_read 3 个 ^/$ 按行/跨行 + test_edit 2 个；+footer 缺口 3：折叠边界/单 hunk 守卫/非 dry_run footer；+N 精确值锚定 29）。`-W error::SyntaxWarning` 零警告
-- **未 commit 文件增为 10**（同前，read.py/test_read.py 新增 MULTILINE 改动）
-
-### docstring 精简（2026-11-11 晚，作者拍板）
-
-**起因**：作者质疑"工具描述和参数描述写得太详细，对 agent 是否多余"。小音分析：问题不是"太详细"而是**双重编码**——JSON Schema 结构（`type`/`default`/`anyOf`/`enum`/`required`）已表达的信息，description 又用文字复述一遍，纯浪费 token（27 工具 schema 全量注入 system prompt，每次对话都背着）。
-
-**原则（判断标准一句话）**：description 只写「JSON 结构表达不了、且 agent 猜错会出错」的信息。
-- **砍三类**：①Schema 复述（`默认 N`/`支持整数或十进制数字字符串`/`false=实际执行（默认）`——JSON `default`/`anyOf` 已表达）②实现细节（`re.finditer + 从后往前替换`/`拼接…finditer 匹配`/`Python re.sub 的 expand 语义`/行尾探测逻辑——agent 不用管）③运行时自解释（`超出文件总行数时报错`/`传 0 报错`/`不能为空`——一调用就知道）
-- **留两类**：语义陷阱（`start` 标注「不是第几个匹配」、`count -1=全部`）+ 新行为（`^/$ 按行`、`\A/\Z` 绝对首尾、footer 列 @@ 头、footer 不计入预算）
-- **范围**：本轮只精简 `file_tools_regex` + `file_tools_regex_replace`（本次改动的两个）；27 工具全量精简待作者决定
-- **注**：此原则与作者既有偏好「工具文档极简直觉化（每参数一句级、细节由运行时输出自解释）」一致——v1.9.x 迭代中为精确描述新行为把 description 越写越长，跑偏了
-
-**description 盲测补漏（2026-11-11 晚，作者拍板）**：两个无上下文子 agent 盲测（只看 schema description 预测传参/输出 → 实调 → 对比）均评「好用」、参数语义清晰（`^/$` vs `\A/\Z` 区分、"start 不是第几个匹配"被点名有价值），但**独立发现同一缺失**：单捕获组时匹配内容列显示组内容（`(\d+)ms` 匹配 `120ms` 但列显示 `120`）——description 只写了多组展平语义，单组情形 agent 预期完整匹配、看到组内容会以为 bug（**非运行时自解释**，这是"预期差"而非"看一眼就懂"）。处置：顶层补「有捕获组时匹配内容列显示组内容（单组=组文本，多组=每组一行）」+ 砍顶层/pattern 重复的「跨行 \n」。盲测其余发现按精简原则否决：换行转义字面 `\n`（运行时自解释）、count/start 按展平行（「行结果」已覆盖）、分页 footer「已全部展示」字面歧义（属 v1.9.0 表格 footer 文案，超出本轮范围）。**盲测法本身可复用**：无上下文 agent + 只给 description + 预测→实测→对比 + 结构化反馈（理解清晰度/预期差/多余缺失/加一句话/总评）。
+- `file_tools_regex` 表格每行 260 字符上限、`max_chars` 默认 5000 整行停止（v1.9.0）
+- `file_tools_regex` / `file_tools_regex_replace` 默认 MULTILINE，`^`/`$` 按行首尾；绝对首尾用 `\A`/`\Z`（v1.9.1）

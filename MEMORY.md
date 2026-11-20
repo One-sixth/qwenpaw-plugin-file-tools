@@ -9,7 +9,7 @@
 
 ### 插件安装方式（2026-11-11 确立，替代旧「双工作树同步」）
 - **新流程**：开发目录 `git ls-files -z` 导出干净 zip（38 跟踪文件，自动排除 `.git`/`__pycache__`/`.coverage`/`.pytest_cache`）→ `qwenpaw plugin install <zip> --force` 热装（QwenPaw 运行时经 API 立即生效，无需重启）
-- **zip 结构**：顶层目录 `qwenpaw-plugin-file-tools/`，`plugin.json` 在顶层（服务端 `_find_plugin_dir` 找根或顶层子目录的 plugin.json）
+- **zip 结构**：**无顶层目录**，`plugin.json` 在 zip 根（arcname = git 相对路径）。服务端 `_find_plugin_dir` 找根或顶层子目录的 plugin.json。
 - **坑**：中文文件名（早期测试指南.md/早期设计稿.md）必须 `git ls-files -z`（null 分隔）——普通 `git ls-files` 对非 ASCII 文件名 quote 成 `"\346..."` 致打包失败；zip 内 arcname 需 UTF-8 flag（Python zipfile 默认正确，已验证）
 - **装机目录状态**：`C:\Users\TWD\.qwenpaw\plugins\qwenpaw-plugin-file-tools` 经 `--force` 重装后**不再是 git 工作树**（`.git` 消失，变干净拷贝）——不要再对装机目录做 git 操作；装机目录是独立快照，与 git 仓库不再联动
 - **⚠️ 热加载不刷新已运行会话**：`qwenpaw plugin install` 替换宿主进程已加载模块（`inspect.getsource` 可验证是新版），但**当前对话会话的工具绑定是启动时快照**——改完工具行为后当前会话调工具仍返回旧结果，需**新开会话**（或重启 QwenPaw）才用上新版

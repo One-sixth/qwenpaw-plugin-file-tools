@@ -1,5 +1,13 @@
 # 更新日志
 
+## v1.9.2 (2026-11-25)
+
+### end_line 隐式兼容 null/None 字符串 + schema 导出脚本对齐宿主
+
+- **end_line 容错**：`parse_int` 加 `allow_null` 开关（默认关），仅 4 个 Optional `end_line` 工具（replace/regex_replace/indent_lines/regex）开启——LLM 误传字符串 `"null"`/`"None"`（忽略大小写与首尾空格）等价于「文件末尾」，必填型 end_line 仍拒绝。描述层不写此兼容（隐式支持），子 agent 盲测零路传该字符串。
+- **show_tool_schema.py**：description/input_schema 改走 `FunctionTool` 实例，与 agentscope 2.0.10 宿主逻辑同源，替代过时的 `split("\n\n")[0]`；27 工具逐一验证语义等价，tools_schema.json 快照未动。
+- **测试**：全量 656 passed（基线 645 + 9 新增 + 2 负向守卫）；4 路 + 2 路 + 3 路无上下文子 agent 分别复审/盲测通过。
+
 ## v1.9.1 (2026-11-11)
 
 ### file_tools_regex_replace dry_run 显示模拟 diff 预览

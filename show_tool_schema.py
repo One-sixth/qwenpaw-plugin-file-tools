@@ -1,19 +1,29 @@
-"""用 agentscope 的 _extract_input_schema 导出完整 schema。
+"""用 agentscope 的 FunctionTool 导出完整 schema（与 QwenPaw 运行时同源）。
 
-description 取自函数 docstring 中 Args: 之前的段落，
-parameters 取自 _extract_input_schema（从 Args: 中提取）。
+description 与 parameters 都从 FunctionTool 实例取——这正是 QwenPaw 注册工具时
+走的路径（FunctionTool.__init__ 内部调 _extract_func_description + _extract_input_schema）：
 
-注意：QwenPaw 运行时实际使用 api.register_tool(description=...) 覆盖 description，
-此处仅为离线预览，与运行时不完全一致。
+    self.description = description or _extract_func_description(func.__doc__ or "")
+    self.input_schema = input_schema or _extract_input_schema(func)
+
+⚠️ 旧版脚本自己实现 _extract_description 用 docstring.split("\\n\\n")[0]，
+   那是 agentscope 旧行为（short 段截断）。agentscope 2.0.10 起 description 改为
+   short_description + long_description 全文拼接，旧脚本已过时。改走 FunctionTool
+   可避免复制宿主逻辑、不再随 agentscope 版本漂移。
+
+注意：QwenPaw 运行时实际用 api.register_tool(description=...) 覆盖工具总体
+description（只进 GUI），此处导出的是 docstring 提取值，仅供离线预览/比对参数 schema。
 """
 import json
 import os
 import sys
 
-sys.path.insert(0, r'D:\Data\github_repo\qwenpaw-plugin-file-tools')
-os.chdir(r'D:\Data\github_repo\qwenpaw-plugin-file-tools')
+# 可移植：以脚本所在目录为基准（不再硬编码 D:\Data\github_repo\...）
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
 
-from agentscope.tool._utils import _extract_input_schema
+from agentscope.tool import FunctionTool
 
 # 全部 27 个工具
 from tools.info import (
@@ -37,19 +47,6 @@ from tools.bytes import (
     file_tools_read_bytes, file_tools_write_bytes, file_tools_find_bytes, file_tools_replace_bytes,
 )
 
-
-def _extract_description(func) -> str:
-    """从函数 docstring 提取第一段作为工具描述。
-
-    与 QwenPaw 运行时不同（运行时使用 api.register_tool(description=...)），
-    此处仅为离线预览。
-    """
-    doc = func.__doc__
-    if not doc:
-        return ""
-    return doc.strip().split("\n\n")[0]
-
-
 tools = [
     ("信息读取", [file_tools_listdir, file_tools_info, file_tools_guess, file_tools_diff, file_tools_history]),
     ("文本读取", [file_tools_read_lines, file_tools_read_block, file_tools_regex]),
@@ -70,22 +67,21 @@ for category, fns in tools:
     print(f'  {category}（{len(fns)} 个工具）')
     print(f'{"=" * 60}')
     for fn in fns:
-        schema = _extract_input_schema(fn)
-        desc = _extract_description(fn)
+        tool = FunctionTool(fn)
         full = {
             "type": "function",
             "function": {
-                "name": fn.__name__,
-                "description": desc,
-                "parameters": schema,
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.input_schema,
             },
         }
-        all_schemas[fn.__name__] = full
-        print(f'\n── {fn.__name__} ──')
+        all_schemas[tool.name] = full
+        print(f'\n── {tool.name} ──')
         print(json.dumps(full, indent=2, ensure_ascii=False))
 
 # 保存到文件
-out_path = "tools_schema.json"
+out_path = os.path.join(PROJECT_ROOT, "tools_schema.json")
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(all_schemas, f, indent=2, ensure_ascii=False)
 print(f'\n\n已保存到 {out_path}（{len(all_schemas)} 个工具）')

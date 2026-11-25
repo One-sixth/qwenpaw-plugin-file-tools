@@ -163,6 +163,9 @@ return make_error("读取", "文件不存在")
 **开启范围（仅 4 处）**：`replace`/`regex_replace`/`indent_lines`（edit.py）、`regex`（read.py）——都是 `end_line: Optional[...] = None` 且 None 有合法语义。必填型 `end_line`（`copy_lines`/`replace_lines`/`delete_lines`）**不开**，传字符串仍报错，负向测试锁定（`test_copy_lines.py` + `test_edit.py`）。
 **描述层保持原样（作者拍板，隐式支持）**：docstring 与 `tools_schema.json` 的 `end_line` 描述**不写** null/None 字符串兼容——保持改动前原文（如「默认 None=文件末尾...」「None=文件末尾」）。理由：明写会教 LLM 去传字符串 `"null"`/`"None"` 这种非标准写法，反而固化坏习惯；正确姿态是代码层隐式容错、描述层不提，让 LLM 按 JSON `null` 语义传参。兼容逻辑只在 `parse_int` 的 allow_null 开关里，用户无感。⚠️ `tools_schema.json` 全量重导会带 ~16 处旧漂移（max_chars 默认值等），若非必要勿全量重导。
 
+**盲测实证（2026-11-25，3 路子 agent 实际工具调用，非自述）**：给 3 agent「改文件第 N 行到末尾/明确行段」任务、不提示 end_line 写法，直接读 tool_call 记录看真实传参——①第10~20行→`end_line=20`（整数）；②第15行到文件结尾→**省略 end_line**（走默认 None=末尾）；③第16~20行→`end_line=20`（整数）。**零路传字符串 `"null"`/`"None"`、零路显式传 JSON `null`**——agent 面对「到末尾」自然选省略参数，正是标准写法。印证作者判断：描述不写兼容=不诱导坏习惯，隐式容错足够。（副发现：agent 事后自述的参数类型有 2/3 偏差——说传字符串实为整数；验证 agent 行为必须读 tool_call 记录、不信自述。）
+
+
 ---
 
 ## 备份系统

@@ -222,6 +222,13 @@ class TestValidation:
         assert "end_line 参数应当输入整数" in _text(result)
 
 
+    def test_end_line_null_string_rejected(self, src_file, dst_file):
+        """必填型 end_line 传 "null" 仍报错——allow_null 未误开到 copy_lines。"""
+        result = file_tools_copy_lines(src_file, 1, "null", dst_file)
+        assert "失败" in _text(result)
+        assert "end_line 参数应当输入整数" in _text(result)
+
+
 class TestIoErrors:
     """读写异常路径的中文报错面。"""
 

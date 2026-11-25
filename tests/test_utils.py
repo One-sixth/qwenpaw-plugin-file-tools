@@ -235,3 +235,28 @@ class TestParseInt:
         _, err = parse_int("abc", "start_line")
         assert "start_line" in err
         assert "「abc」" in err
+
+
+
+class TestParseIntAllowNull:
+    """parse_int 的 allow_null 开关：仅开启时把字符串 null/None 当作 None。"""
+
+    def test_allow_null_strings(self):
+        """开启后，"null"/"None"（含大小写、空格）解析为 None。"""
+        for val in ("null", "None", "NULL", "none", " null ", "None "):
+            val_out, err = parse_int(val, "end_line", allow_null=True)
+            assert val_out is None, f"{val!r} 应解析为 None"
+            assert err is None
+
+    def test_allow_null_default_off(self):
+        """默认不开启——"null"/"None" 仍报错，保护 count/start 等必填参数。"""
+        for val in ("null", "None"):
+            val_out, err = parse_int(val, "count")
+            assert val_out is None
+            assert "参数应当输入整数" in err
+
+    def test_allow_null_keeps_none_and_int(self):
+        """开启后 None 与合法整数/数字字符串行为不变。"""
+        assert parse_int(None, "end_line", allow_null=True) == (None, None)
+        assert parse_int(12, "end_line", allow_null=True) == (12, None)
+        assert parse_int(" 12 ", "end_line", allow_null=True) == (12, None)

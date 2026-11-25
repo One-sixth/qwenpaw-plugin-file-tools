@@ -479,7 +479,7 @@ def file_tools_replace(
     start_line, err = parse_int(start_line, "start_line")
     if err:
         return make_error("替换", err)
-    end_line, err = parse_int(end_line, "end_line")
+    end_line, err = parse_int(end_line, "end_line", allow_null=True)
     if err:
         return make_error("替换", err)
     count, err = parse_int(count, "count")
@@ -677,7 +677,7 @@ def file_tools_regex_replace(
     start_line, err = parse_int(start_line, "start_line")
     if err:
         return make_error("正则替换", err)
-    end_line, err = parse_int(end_line, "end_line")
+    end_line, err = parse_int(end_line, "end_line", allow_null=True)
     if err:
         return make_error("正则替换", err)
     start, err = parse_int(start, "start")
@@ -830,7 +830,7 @@ def file_tools_indent_lines(
     start_line, err = parse_int(start_line, "start_line")
     if err:
         return make_error("缩进调整", err)
-    end_line, err = parse_int(end_line, "end_line")
+    end_line, err = parse_int(end_line, "end_line", allow_null=True)
     if err:
         return make_error("缩进调整", err)
     count, err = parse_int(count, "count")

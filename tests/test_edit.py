@@ -1021,3 +1021,48 @@ class TestStrLineParams:
         result = file_tools_indent_lines(multi_line_file, count="x")
         assert "失败" in result.content[0].text
         assert "count 参数应当输入整数" in result.content[0].text
+
+
+
+class TestEndLineNullStringCompat:
+    """end_line 传 "null"/"None" 字符串应等价于 None（文件末尾）。"""
+
+    def test_regex_replace_end_line_null(self, multi_line_file):
+        result = file_tools_regex_replace(
+            multi_line_file, r"line", "ROW", start_line=1, end_line="null", count=-1
+        )
+        assert "成功替换" in result.content[0].text
+        assert "ROW20" in _read_file(multi_line_file)
+
+    def test_regex_replace_end_line_none_str(self, multi_line_file):
+        result = file_tools_regex_replace(
+            multi_line_file, r"line", "ROW", start_line=1, end_line="None", count=-1
+        )
+        assert "成功替换" in result.content[0].text
+        assert "ROW20" in _read_file(multi_line_file)
+
+    def test_replace_end_line_null(self, multi_line_file):
+        result = file_tools_replace(
+            multi_line_file, "line", "ROW", start_line=1, end_line="null", count=-1
+        )
+        assert "成功替换" in result.content[0].text
+        assert "ROW20" in _read_file(multi_line_file)
+
+    def test_indent_lines_end_line_null(self, multi_line_file):
+        result = file_tools_indent_lines(
+            multi_line_file, start_line=1, end_line="null", mode="expand", count=2
+        )
+        assert "成功" in result.content[0].text
+        lines = _read_lines(multi_line_file)
+        assert lines[0].startswith("  ")     # 第 1 行
+        assert lines[-1].startswith("  ")    # 最后一行（末尾）
+
+
+    def test_required_end_line_rejects_null_string(self, multi_line_file):
+        """必填型 end_line（replace_lines/delete_lines）传 "null" 仍报错，不误开。"""
+        r1 = file_tools_replace_lines(multi_line_file, 1, "null", "X")
+        assert "失败" in r1.content[0].text
+        assert "end_line 参数应当输入整数" in r1.content[0].text
+        r2 = file_tools_delete_lines(multi_line_file, 1, "null")
+        assert "失败" in r2.content[0].text
+        assert "end_line 参数应当输入整数" in r2.content[0].text

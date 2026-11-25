@@ -11,8 +11,8 @@
 - **新流程**：开发目录 `git ls-files -z` 导出干净 zip（38 跟踪文件，自动排除 `.git`/`__pycache__`/`.coverage`/`.pytest_cache`）→ `qwenpaw plugin install <zip> --force` 热装（QwenPaw 运行时经 API 立即生效，无需重启）
 - **zip 结构**：**无顶层目录**，`plugin.json` 在 zip 根（arcname = git 相对路径）。服务端 `_find_plugin_dir` 找根或顶层子目录的 plugin.json。
 - **坑**：中文文件名（早期测试指南.md/早期设计稿.md）必须 `git ls-files -z`（null 分隔）——普通 `git ls-files` 对非 ASCII 文件名 quote 成 `"\346..."` 致打包失败；zip 内 arcname 需 UTF-8 flag（Python zipfile 默认正确，已验证）
-- **装机目录状态**：`C:\Users\TWD\.qwenpaw\plugins\qwenpaw-plugin-file-tools` 经 `--force` 重装后**不再是 git 工作树**（`.git` 消失，变干净拷贝）——不要再对装机目录做 git 操作；装机目录是独立快照，与 git 仓库不再联动
-- **⚠️ 热加载不刷新已运行会话**：`qwenpaw plugin install` 替换宿主进程已加载模块（`inspect.getsource` 可验证是新版），但**当前对话会话的工具绑定是启动时快照**——改完工具行为后当前会话调工具仍返回旧结果，需**新开会话**（或重启 QwenPaw）才用上新版
+- **装机目录状态**：装机目录 `~/.qwenpaw/plugins/qwenpaw-plugin-file-tools`（Windows 下 `C:\Users\<用户>\.qwenpaw\plugins\...`）经 `--force` 重装后**不再是 git 工作树**（`.git` 消失，变干净拷贝）——不要再对装机目录做 git 操作；装机目录是独立快照，与 git 仓库不再联动
+- **热加载生效时机（2026-11-25 实测修正，替代旧「需新开会话」说法）**：QwenPaw 2.3.0 下 `qwenpaw plugin install` 经 API 热装后，**下一回合即生效**——本会话实测：热装当回合调工具仍走旧版，紧接着下一回合调 `file_tools_regex_replace(end_line="null")` 即命中新版行为（不再报整数错误）。无需新开会话/重启。旧的「当前会话工具绑定是启动时快照、需新开会话」说法（v1.x 时代留下，出处 `QwenPaw插件商店更新机制与第三方插件热更新.md`）在 2.3.0 已过时；与 process-tools / agent-tools 插件热装实测结论一致（工具每回合从注册表装配，非会话级持久快照）
 
 ### 文件 I/O 模式
 - **统一用文本模式**（`r`/`w`/`a`），不手动处理行分隔符
@@ -156,6 +156,12 @@ return make_error("读取", "文件不存在")
 ### 4. 备份路径硬编码
 `get_session_dir()` 返回 `{ws}/file_tools_data`，所有会话共享备份目录。
 如需 session 隔离，需通过 QwenPaw 内核注入 session ID。
+
+### 5. Optional `end_line` 的 null/None 字符串兼容（2026-11-25）
+**语义契约**：`end_line` 的 JSON 空值是 `null`（= Python `None`）= 文件末尾；LLM 常照旧 docstring「None=文件末尾」字面传字符串 `"null"`/`"None"`，schema 的 `anyOf` 含 `string` 不拦，旧版 `parse_int` 内部报「应当输入整数」。
+**实现**：`parse_int(value, param_name, allow_null=False)` 加开关——仅 `allow_null=True` 时把字符串 `null`/`None`（忽略大小写+首尾空格）转 `None`；**默认关**，防 `count`/`start`/`max_chars` 等必填参数传 `"null"` 被静默吞成 None。
+**开启范围（仅 4 处）**：`replace`/`regex_replace`/`indent_lines`（edit.py）、`regex`（read.py）——都是 `end_line: Optional[...] = None` 且 None 有合法语义。必填型 `end_line`（`copy_lines`/`replace_lines`/`delete_lines`）**不开**，传字符串仍报错，负向测试锁定（`test_copy_lines.py` + `test_edit.py`）。
+**描述层保持原样（作者拍板，隐式支持）**：docstring 与 `tools_schema.json` 的 `end_line` 描述**不写** null/None 字符串兼容——保持改动前原文（如「默认 None=文件末尾...」「None=文件末尾」）。理由：明写会教 LLM 去传字符串 `"null"`/`"None"` 这种非标准写法，反而固化坏习惯；正确姿态是代码层隐式容错、描述层不提，让 LLM 按 JSON `null` 语义传参。兼容逻辑只在 `parse_int` 的 allow_null 开关里，用户无感。⚠️ `tools_schema.json` 全量重导会带 ~16 处旧漂移（max_chars 默认值等），若非必要勿全量重导。
 
 ---
 

@@ -187,18 +187,21 @@ def make_success(text: str) -> "ToolChunk":
     )
 
 
-def parse_int(value, param_name: str) -> Tuple[Optional[int], Optional[str]]:
+def parse_int(value, param_name: str, allow_null: bool = False) -> Tuple[Optional[int], Optional[str]]:
     """将 int 或十进制数字字符串转换为 int。
 
     兼容 LLM 将数字参数传成字符串（如 "123"）的情况。
     - int → 原样返回
     - str → strip 后匹配十进制（可选负号），合法转 int
     - None → 原样返回（用于 Optional 参数未指定）
+    - str "null"/"None"（忽略大小写与首尾空格）→ 仅 allow_null=True 时转 None
     - 其他 / 非法字符串 → 返回错误消息
 
     Args:
         value: 原始值，int / str / None
         param_name: 参数名，用于错误消息
+        allow_null: 是否把字符串 "null"/"None" 当作 None。默认 False，
+            仅对 None 有特殊语义的 Optional 参数开启。
 
     Returns:
         (int_or_None, None) 成功；
@@ -212,6 +215,8 @@ def parse_int(value, param_name: str) -> Tuple[Optional[int], Optional[str]]:
         return value, None
     if isinstance(value, str):
         s = value.strip()
+        if allow_null and s.lower() in ("null", "none"):
+            return None, None
         if re.fullmatch(r"-?\d+", s):
             return int(s), None
     return None, f"{param_name} 参数应当输入整数，收到「{value}」"

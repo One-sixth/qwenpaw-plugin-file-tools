@@ -717,3 +717,16 @@ class TestStrLineParams:
         result = file_tools_regex(cross_line_regex_file, r"return 42$")
         text = result.content[0].text
         assert "return 42" in text                 # $ 按行匹配行尾，跨行能力不受影响
+
+
+
+class TestRegexEndLineNullStringCompat:
+    """regex 的 end_line 传 "null"/"None" 字符串应等价于 None（文件末尾）。"""
+
+    def test_regex_end_line_null(self, multi_line_file):
+        result = file_tools_regex(multi_line_file, r"line20", end_line="null", count=-1)
+        assert "line20" in result.content[0].text
+
+    def test_regex_end_line_none_str(self, multi_line_file):
+        result = file_tools_regex(multi_line_file, r"line20", end_line="None", count=-1)
+        assert "line20" in result.content[0].text

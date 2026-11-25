@@ -286,7 +286,7 @@ def file_tools_regex(
     start_line, err = parse_int(start_line, "start_line")
     if err:
         return make_error("正则匹配", err)
-    end_line, err = parse_int(end_line, "end_line")
+    end_line, err = parse_int(end_line, "end_line", allow_null=True)
     if err:
         return make_error("正则匹配", err)
     start, err = parse_int(start, "start")
